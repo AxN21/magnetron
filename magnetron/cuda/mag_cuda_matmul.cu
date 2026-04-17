@@ -18,17 +18,14 @@
 #include <cuda_runtime.h>
 #include <cuda_bf16.h>
 #include <cuda/barrier>
-#include <cuda/ptx>
 #include <mma.h>
 
 #include <array>
 #include <cmath>
-#include <cstdint>
 #include <mutex>
 #include <numeric>
 #include <stdexcept>
 
-#define MAG_CUDA_MATMUL_PROFILE 1
 #define MAG_CUDA_MATMUL_USE_WMMA 1
 
 namespace mag {
@@ -231,6 +228,61 @@ namespace mag {
         }
     }
 
+    struct barrier final {
+        uint64_t bar;
+
+        __device__ void init(const uint32_t &count) {
+            asm volatile("mbarrier.init.shared.b64 [%0], %1;" :: "r"(static_cast<uint32_t>(__cvta_generic_to_shared(this))), "r"(count) : "memory");
+        }
+
+        __device__ void cp_async_bulk_tensor_3d(void *dst, const void *tmap, const int32_t (&coords)[3]) {
+            asm volatile(
+                "cp.async.bulk.tensor.3d.shared::cluster.global.tile.mbarrier::complete_tx::bytes [%0], [%1, {%2, %3, %4}], [%5];"
+                :: "r"(static_cast<uint32_t>(__cvta_generic_to_shared(dst))),
+                "l"(tmap),
+                "r"(coords[0]), "r"(coords[1]), "r"(coords[2]),
+                "r"(static_cast<uint32_t>(__cvta_generic_to_shared(this)))
+                : "memory"
+            );
+        }
+
+        __device__ void arrive_expect_tx(const uint32_t &tx) {
+            uint64_t state;
+            asm volatile(
+                "mbarrier.arrive.expect_tx.release.cta.shared::cta.b64 %0, [%1], %2;"
+                : "=l"(state)
+                : "r"(static_cast<uint32_t>(__cvta_generic_to_shared(this))), "r"(tx)
+                : "memory"
+            );
+        }
+
+        [[nodiscard]] __device__ bool try_wait_parity(const uint32_t &phase_parity){
+            uint32_t wait_completed;
+            asm volatile(
+                "{\n"
+                ".reg .pred PROT;\n"
+                "mbarrier.try_wait.parity.shared::cta.b64 PROT, [%1], %2;\n"
+                "selp.b32 %0, 1, 0, PROT;\n"
+                "}"
+                : "=r"(wait_completed)
+                : "r"(static_cast<uint32_t>(__cvta_generic_to_shared(this))), "r"(phase_parity)
+                : "memory"
+            );
+            return static_cast<bool>(wait_completed);
+        };
+
+        __device__ void arrive(){
+            uint64_t state;
+            asm volatile(
+                "mbarrier.arrive.release.cta.shared::cta.b64 %0, [%1];"
+                : "=l"(state)
+                : "r"(static_cast<uint32_t>(__cvta_generic_to_shared(this)))
+                : "memory"
+            );
+        };
+    };
+    static_assert(sizeof(barrier) == sizeof(uint64_t));
+
     template <typename T, bool TA, bool TB, int BM, int BN, int STAGES>
     __global__ static void matmul_kernel_wmma(
         int64_t M,
@@ -275,9 +327,9 @@ namespace mag {
         T *__restrict__ r_batch = br + static_cast<int64_t>(batch)*M*N;
 
         extern __shared__ __align__(128) uint8_t smem_raw[];
-        __shared__ uint64_t a_bar[STAGES];
-        __shared__ uint64_t b_bar[STAGES];
-        __shared__ uint64_t done_bar[STAGES];
+        __shared__ barrier a_bar[STAGES];
+        __shared__ barrier b_bar[STAGES];
+        __shared__ barrier done_bar[STAGES];
 
         auto *a_smem = reinterpret_cast<T *>(smem_raw);
         auto *b_smem = a_smem + STAGES*A_SIZE;
@@ -286,9 +338,9 @@ namespace mag {
         if (tid == 0) {
             #pragma unroll
             for (int s=0; s < STAGES; ++s) {
-                cuda::ptx::mbarrier_init(a_bar+s, 1);
-                cuda::ptx::mbarrier_init(b_bar+s, 1);
-                cuda::ptx::mbarrier_init(done_bar+s, CONSUMER_WARPS);
+                a_bar[s].init(1);
+                b_bar[s].init(1);
+                done_bar[s].init(CONSUMER_WARPS);
             }
         }
         __syncthreads();
@@ -319,57 +371,26 @@ namespace mag {
                 b_coords[2] = batch;
             }
 
-            cuda::ptx::cp_async_bulk_tensor(
-                cuda::ptx::space_cluster,
-                cuda::ptx::space_global,
-                a_buf,
-                &map_a,
-                a_coords,
-                &a_bar[stage]
-            );
-            cuda::ptx::mbarrier_arrive_expect_tx(
-                cuda::ptx::sem_release,
-                cuda::ptx::scope_cta,
-                cuda::ptx::space_shared,
-                &a_bar[stage],
-                sizeof(T)*A_SIZE
-            );
+            a_bar[stage].cp_async_bulk_tensor_3d(a_buf, &map_a, a_coords);
+            a_bar[stage].arrive_expect_tx(sizeof(T)*A_SIZE);
 
-            cuda::ptx::cp_async_bulk_tensor(
-                cuda::ptx::space_cluster,
-                cuda::ptx::space_global,
-                b_buf,
-                &map_b,
-                b_coords,
-                &b_bar[stage]
-            );
-            cuda::ptx::mbarrier_arrive_expect_tx(
-                cuda::ptx::sem_release,
-                cuda::ptx::scope_cta,
-                cuda::ptx::space_shared,
-                &b_bar[stage],
-                sizeof(T)*B_SIZE
-            );
+            b_bar[stage].cp_async_bulk_tensor_3d(b_buf, &map_b, b_coords);
+            b_bar[stage].arrive_expect_tx(sizeof(T)*B_SIZE);
         };
 
         auto wait_stage_ready = [&](int stage, int phase) -> void {
-            while (!cuda::ptx::mbarrier_try_wait_parity(&a_bar[stage], phase)) {}
-            while (!cuda::ptx::mbarrier_try_wait_parity(&b_bar[stage], phase)) {}
+            while (!a_bar[stage].try_wait_parity(phase));
+            while (!b_bar[stage].try_wait_parity(phase));
         };
 
         auto producer_wait_stage_reusable = [&](int stage, int phase) -> void {
             if (!is_producer || lane != 0) return;
-            while (!cuda::ptx::mbarrier_try_wait_parity(&done_bar[stage], phase)) {}
+            while (!done_bar[stage].try_wait_parity(phase));
         };
 
         auto consumer_mark_stage_done = [&](int stage) -> void {
             if (is_producer || lane != 0) return;
-            cuda::ptx::mbarrier_arrive(
-                cuda::ptx::sem_release,
-                cuda::ptx::scope_cta,
-                cuda::ptx::space_shared,
-                &done_bar[stage]
-            );
+            done_bar[stage].arrive();
         };
 
         wmma::fragment<wmma::accumulator, 16, 16, 16, float> c_frag0;
