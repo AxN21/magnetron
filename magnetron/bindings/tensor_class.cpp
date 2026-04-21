@@ -224,6 +224,11 @@ namespace mag::bindings {
             std::lock_guard lock {get_global_mutex()};
             mag_error_t err {};
             throw_if_error(mag_save_image(&err, *self, file_name.c_str()), err);
+        })
+        .def("save_audio", [](const tensor_wrapper &self, const std::string &path, uint32_t sample_rate) {
+            std::lock_guard lock {get_global_mutex()};
+            mag_error_t err {};
+            throw_if_error(mag_save_audio(&err, *self, path.c_str(), sample_rate), err);
         });
     }
 

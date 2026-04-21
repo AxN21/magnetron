@@ -34,3 +34,14 @@ TEST(tensor, load_image_resize_planar) {
     ASSERT_EQ(mag_tensor_shape_ptr(img)[2], 22);
     mag_rc_decref(img);
 }
+
+TEST(tensor, save_load_roundtrip) {
+    context ctx {};
+    mag_tensor_t *img;
+    mag_status_t stat = mag_load_image(nullptr, &img, &*ctx, "media/xoxja.png", "RGB", 22, 111, mag_device(CPU, 0));
+    ASSERT_EQ(stat, MAG_STATUS_OK);
+    ASSERT_EQ(mag_tensor_shape_ptr(img)[0], 3);
+    ASSERT_EQ(mag_tensor_shape_ptr(img)[1], 111);
+    ASSERT_EQ(mag_tensor_shape_ptr(img)[2], 22);
+    mag_rc_decref(img);
+}

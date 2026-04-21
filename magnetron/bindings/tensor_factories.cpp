@@ -608,8 +608,7 @@ namespace mag::bindings {
             },
             "Random permutation of [0, n). Kwargs: dtype, requires_grad."
         );
-        cls.attr("load_image") = nb::cpp_function(
-            [](const std::string &path, nb::kwargs kwargs) -> tensor_wrapper {
+        cls.attr("load_image") = nb::cpp_function([](const std::string &path, nb::kwargs kwargs) -> tensor_wrapper {
                 std::lock_guard lock {get_global_mutex()};
                 std::string channels = "RGB";
                 uint32_t rw = 0, rh = 0;
@@ -641,6 +640,31 @@ namespace mag::bindings {
                 return tensor_wrapper{out};
             },
             "Load image from path. Kwargs: channels (e.g. 'RGB'), resize_to (w, h)."
+        );
+        cls.attr("load_audio") = nb::cpp_function([](const std::string &path, nb::kwargs kwargs) -> nb::tuple {
+                std::lock_guard lock {get_global_mutex()};
+                for (auto [handle, _] : kwargs) {
+                    auto key = nb::cast<std::string>(handle);
+                    if (key != "device") {
+                        std::ostringstream oss;
+                        oss << "Unexpected keyword argument: " << key;
+                        throw nb::value_error(oss.str().c_str());
+                    }
+                }
+                std::optional<mag_device_id_t> device_id = parse_device_id_str(kw_device_or_default(kwargs));
+                if (!device_id) throw std::runtime_error {"Invalid device id!"};
+                mag_context_t *ctx = get_ctx();
+                mag_tensor_t *out = nullptr;
+                uint32_t sample_rate = 0;
+                mag_error_t err {};
+                throw_if_error(
+                    mag_load_audio(&err, &out, ctx, path.c_str(), &sample_rate, *device_id),
+                    err
+                );
+                return nb::make_tuple(tensor_wrapper{out}, sample_rate);
+            },
+            "Load audio from path. Kwargs: device. "
+            "Returns (audio, sample_rate), where audio is float32 with shape (C, T)."
         );
         cls.attr("as_strided") = nb::cpp_function(
             [](const tensor_wrapper &base, nb::handle shape_h, nb::handle strides_h, nb::kwargs kwargs) -> tensor_wrapper {
