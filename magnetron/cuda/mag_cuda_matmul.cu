@@ -247,7 +247,7 @@ namespace mag {
         }
 
         __device__ void arrive_expect_tx(const uint32_t &tx) {
-            uint64_t state;
+            [[maybe_unused]] uint64_t state;
             asm volatile(
                 "mbarrier.arrive.expect_tx.release.cta.shared::cta.b64 %0, [%1], %2;"
                 : "=l"(state)
