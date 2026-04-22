@@ -36,7 +36,11 @@ namespace mag::bindings {
     [[nodiscard]] extern const std::string &get_default_device_unlocked();
     [[nodiscard]] extern std::string get_default_device();
 
-    struct dtype_wrapper final { mag_dtype_t v; };
+    struct dtype_wrapper final {
+        mag_dtype_t v;
+
+        constexpr mag_dtype_t operator *() const noexcept { return v; }
+    };
 
     template <typename F>
     class on_scope_exit final {

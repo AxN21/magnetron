@@ -118,31 +118,6 @@ typedef struct mag_error_t {
     const char *func;
 } mag_error_t;
 
-/**
-* @brief The context is used to create and manage tensors, operations, and other resources.
-* Since all tensors, storages, devices and backends are associated with a context, the context must stay alive until all associated resources are destroyed.
-* The context is not thread safe, in multiple threads, use one context per thread.
-*/
-typedef struct mag_context_t mag_context_t;
-
-extern MAG_EXPORT mag_context_t *mag_ctx_create(void);                                                                  /* Create context with default config, and only specify device type. */
-extern MAG_EXPORT bool mag_ctx_is_device_available(mag_context_t *ctx, mag_device_id_t id);                             /* Check if a device is available in the context. */
-extern MAG_EXPORT void mag_ctx_grad_recorder_start(mag_context_t *ctx);                                                 /* Start gradient recording */
-extern MAG_EXPORT void mag_ctx_grad_recorder_stop(mag_context_t *ctx);                                                  /* Stop gradient recording */
-extern MAG_EXPORT bool mag_ctx_grad_recorder_is_running(const mag_context_t *ctx);                                      /* Check if gradient recording is running */
-extern MAG_EXPORT void mag_ctx_manual_seed(mag_context_t *ctx, uint64_t seed);                                          /* Manually seed the PRNG. */
-extern MAG_EXPORT void mag_ctx_destroy(mag_context_t *ctx, bool suppress_leak_detection);                               /* Destroy context and free memory */
-
-/**
- * @brief Multidimensional tensor of arbitrary rank and data type.
- *      The tensor is reference counted and can be shared between multiple tensors.
- *      Rule of Thumb for Reference Counting:
- *          - If you only use the reference temporarily and do not store it, no need to adjust the reference count.
- *          - If you store the reference (e.g., in a data structure), increase the reference count when storing and decrease it when removing.
- *      The rank is > 0 and <= MAG_MAX_DIMS. The shape of the tensor is an array of dimensions of size MAG_MAX_DIMS.
- *      Is a node in a static or dynamic computation graph, depending on the context execution mode.
- */
-typedef struct mag_tensor_t mag_tensor_t;
 
 /**
 * Type tag discriminating between different scalar types.
@@ -172,11 +147,9 @@ typedef struct mag_scalar_t {
 extern MAG_EXPORT mag_scalar_t mag_scalar_from_f64(double value);
 extern MAG_EXPORT mag_scalar_t mag_scalar_from_i64(int64_t value);
 extern MAG_EXPORT mag_scalar_t mag_scalar_from_u64(uint64_t value);
-
 extern MAG_EXPORT bool mag_scalar_is_f64(mag_scalar_t s);
 extern MAG_EXPORT bool mag_scalar_is_i64(mag_scalar_t s);
 extern MAG_EXPORT bool mag_scalar_is_u64(mag_scalar_t s);
-
 extern MAG_EXPORT double mag_scalar_as_f64(mag_scalar_t s);
 extern MAG_EXPORT int64_t mag_scalar_as_i64(mag_scalar_t s);
 extern MAG_EXPORT uint64_t mag_scalar_as_u64(mag_scalar_t s);
@@ -222,6 +195,25 @@ extern MAG_EXPORT bool mag_type_category_is_signed_integer(mag_dtype_t type);
 extern MAG_EXPORT bool mag_type_category_is_integer(mag_dtype_t type);
 extern MAG_EXPORT bool mag_type_category_is_integral(mag_dtype_t type);
 extern MAG_EXPORT bool mag_type_category_is_numeric(mag_dtype_t type);
+
+/**
+* @brief The context is used to create and manage tensors, operations, and other resources.
+* Since all tensors, storages, devices and backends are associated with a context, the context must stay alive until all associated resources are destroyed.
+* The context is not thread safe, in multiple threads, use one context per thread.
+*/
+typedef struct mag_context_t mag_context_t;
+
+extern MAG_EXPORT mag_context_t *mag_ctx_create(void);                                                                  /* Create context with default config, and only specify device type. */
+extern MAG_EXPORT bool mag_ctx_is_device_available(mag_context_t *ctx, mag_device_id_t id);                             /* Check if a device is available in the context. */
+extern MAG_EXPORT void mag_ctx_grad_recorder_start(mag_context_t *ctx);                                                 /* Start gradient recording */
+extern MAG_EXPORT void mag_ctx_grad_recorder_stop(mag_context_t *ctx);                                                  /* Stop gradient recording */
+extern MAG_EXPORT bool mag_ctx_grad_recorder_is_running(const mag_context_t *ctx);                                      /* Check if gradient recording is running */
+extern MAG_EXPORT void mag_ctx_manual_seed(mag_context_t *ctx, uint64_t seed);                                          /* Manually seed the PRNG. */
+extern MAG_EXPORT mag_dtype_t mag_ctx_default_dtype(mag_context_t *ctx);                                             /* Get default floating point dtype for the context. This is used by factory functions when the dtype is not specified. */
+extern MAG_EXPORT bool mag_ctx_set_default_dtype(mag_context_t *ctx, mag_dtype_t type);                              /* Set default floating point dtype for the context. This is used by factory functions when the dtype is not specified. Must be a floating point type. */
+extern MAG_EXPORT void mag_ctx_destroy(mag_context_t *ctx, bool suppress_leak_detection);                               /* Destroy context and free memory */
+
+typedef struct mag_tensor_t mag_tensor_t;
 
 extern MAG_EXPORT mag_status_t mag_empty(mag_error_t *err, mag_tensor_t **out_result, mag_context_t *ctx, mag_dtype_t type, int64_t rank, const int64_t *shape, mag_device_id_t device);
 extern MAG_EXPORT mag_status_t mag_as_strided(mag_error_t *err, mag_tensor_t **out_result, mag_context_t *ctx, mag_tensor_t *base, int64_t rank, const int64_t *shape, const int64_t *strides, int64_t offset);

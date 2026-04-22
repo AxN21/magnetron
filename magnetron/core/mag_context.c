@@ -140,6 +140,7 @@ mag_context_t *mag_ctx_create() {
     mag_slab_init(&ctx->au_state_slab, sizeof(mag_au_state_t), __alignof(mag_au_state_t), 0x1000);
 
     ctx->tr_id = mag_thread_id(); /* Get thread ID. */
+    ctx->default_dtype = MAG_DTYPE_FLOAT32; /* Use fp32 by default */
     ctx->flags |= MAG_CTX_FLAG_GRAD_RECORDER; /* Enable gradient recording by default. */
 
     /* Query and print host system information. */
@@ -224,4 +225,17 @@ static void mag_seed_callback(mag_backend_t *bck, mag_device_t *dvc, void *usr) 
 
 void mag_ctx_manual_seed(mag_context_t *ctx, uint64_t seed) {
     mag_backend_registry_iter_devices(ctx->backend_registry, &mag_seed_callback, &seed);
+}
+
+mag_dtype_t mag_ctx_default_dtype(mag_context_t *ctx) {
+    return ctx->default_dtype;
+}
+
+bool mag_ctx_set_default_dtype(mag_context_t *ctx, mag_dtype_t type) {
+    if (!mag_type_category_is_floating_point(type)) {
+        mag_log_error("Cannot set default floating point dtype to non-floating point type '%s'", mag_type_trait(type)->name);
+        return false;
+    }
+    ctx->default_dtype = type;
+    return true;
 }

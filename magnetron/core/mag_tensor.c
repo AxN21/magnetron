@@ -278,11 +278,8 @@ mag_status_t mag_tensor_item(mag_error_t *err, mag_tensor_t *tensor, mag_scalar_
     mag_try(mag_transfer(err, &host, tensor, mag_device(CPU, 0)));
     mag_status_t stat;
     mag_tensor_t *scalar = NULL;
-    if (host->coords.rank == 0) {
-        scalar = host;
-    } else {
-        mag_try_or(mag_view(err, &scalar, host, NULL, 0), { mag_tensor_decref(host); });
-    }
+    if (host->coords.rank == 0) scalar = host;
+    else mag_try_or(mag_view(err, &scalar, host, NULL, 0), { mag_tensor_decref(host); });
     mag_dtype_t dt = scalar->dtype;
     mag_dtype_mask_t mask = mag_dtype_bit(dt);
     mag_scalar_t res;

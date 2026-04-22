@@ -1170,6 +1170,7 @@ typedef enum mag_binop_flags_t {
 static mag_status_t mag_op_stub_binary(mag_error_t *err, mag_tensor_t **out_result, mag_opcode_t op, mag_tensor_t *x, mag_tensor_t *y, mag_binop_flags_t flags) {
     *out_result = NULL;
     mag_tensor_t *result = NULL;
+    mag_context_t *ctx = x->ctx;
     mag_dtype_t prom_type; /* common compute dtype for x,y */
     mag_dtype_t res_type;  /* dtype of 'result' tensor */
     bool x_int = mag_tensor_is_integer_typed(x);
@@ -1203,7 +1204,7 @@ static mag_status_t mag_op_stub_binary(mag_error_t *err, mag_tensor_t **out_resu
         switch (op) {
             case MAG_OP_DIV: { /* Special case for truediv */
                 if (x_int && y_int) { /* Integer division always promotes to default float dtype */
-                    prom_type = res_type = MAG_DTYPE_FLOAT32;
+                    prom_type = res_type = ctx->default_dtype;
                 } else {
                     bool prom_ok = mag_promote_type(&prom_type, x->dtype, y->dtype);
                     mag_contract(err, ERR_INVALID_PARAM, {}, prom_ok,
@@ -1226,7 +1227,7 @@ static mag_status_t mag_op_stub_binary(mag_error_t *err, mag_tensor_t **out_resu
                     res_type = prom_type;
                 } else { /* Non-integer floor division promotes to floating dtype */
                     if (!(mag_dtype_bit(prom_type) & MAG_DTYPE_MASK_FP))
-                        prom_type = MAG_DTYPE_FLOAT32;
+                        prom_type = ctx->default_dtype;
                     res_type = prom_type;
                 }
             } break;

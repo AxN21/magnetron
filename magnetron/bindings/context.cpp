@@ -13,6 +13,8 @@
 
 #include <atomic>
 
+#include "core/mag_context.h"
+
 namespace mag::bindings {
     static std::once_flag g_ctx_once;
     static std::atomic<mag_context_t*> g_ctx{nullptr};
@@ -74,9 +76,18 @@ namespace mag::bindings {
             std::lock_guard lock {get_global_mutex()};
             return g_default_device;
         }, "Get the default device string (e.g., 'cpu', 'cuda:0').");
-        context.def("set_default_device", [](const std::string &device) {
+        context.def("set_default_device", [](const std::string &device) -> void {
             std::lock_guard lock {get_global_mutex()};
             g_default_device = device;
         }, "device"_a, "Set the default device string (e.g., 'cpu', 'cuda:0').");
+        context.def("get_default_dtype", []() -> dtype_wrapper {
+            std::lock_guard lock {get_global_mutex()};
+            return dtype_wrapper{mag_ctx_default_dtype(get_ctx())};
+        });
+        context.def("set_default_dtype", [](const dtype_wrapper &dtype) -> void {
+            std::lock_guard lock {get_global_mutex()};
+            if (!mag_ctx_set_default_dtype(get_ctx(), *dtype))
+                throw std::logic_error {"Only floating-point types are supported as the default type"};
+        });
     }
 }
