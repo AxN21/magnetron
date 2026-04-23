@@ -367,6 +367,7 @@ void mag_machine_info_probe(mag_machine_info_t *ma) {
     mag_machine_probe_cpu_cores(&ma->cpu_virtual_cores, &ma->cpu_physical_cores, &ma->cpu_sockets);
     mag_machine_probe_memory(&ma->phys_mem_total, &ma->phys_mem_free);
     uint64_t caps = 0;
+    (void)caps;
 #if defined(__x86_64__) || defined(_M_X64)
     mag_probe_cpu_amd64(&ma->amd64_cpu_caps, &ma->amd64_avx10_ver);
     caps = ma->amd64_cpu_caps;
@@ -374,7 +375,9 @@ void mag_machine_info_probe(mag_machine_info_t *ma) {
     mag_probe_cpu_arm64(&ma->arm64_cpu_caps, &ma->arm64_cpu_sve_width);
     caps = ma->arm64_cpu_caps;
 #endif
+#if defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__)
     mag_probe_cpu_cache_topology(caps, &ma->cpu_l1_size, &ma->cpu_l2_size, &ma->cpu_l3_size);
+#endif
     if (mag_unlikely(!*ma->os_name)) snprintf(ma->os_name, sizeof(ma->os_name), "Unknown");
     if (mag_unlikely(!*ma->cpu_name)) snprintf(ma->cpu_name, sizeof(ma->cpu_name), "Unknown");
 }

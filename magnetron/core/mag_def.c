@@ -24,6 +24,7 @@
 #endif
 #include <unistd.h>
 #include <time.h>
+#include <sys/time.h>
 #endif
 
 static mag_log_level_t mag_log_level_var = MAG_LOG_LEVEL_ERROR;
@@ -188,8 +189,8 @@ uintptr_t mag_thread_id(void) { /* Get the current thread ID. */
 #else
     __asm__ ("mv %0, tp" : "=r" (tid));
 #endif
-#else
-#error "Unsupported magnetron platform"
+#else /* Last resort lol */
+    tid = (uintptr_t)__builtin_thread_pointer();
 #endif
     return tid;
 }

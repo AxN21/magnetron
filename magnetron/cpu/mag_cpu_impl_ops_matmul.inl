@@ -30,9 +30,12 @@
 #endif
 #define mag_prefetcht0(p) __builtin_prefetch((const char*)(p), 0, 3)
 #define mag_prefetcht1(p) __builtin_prefetch((const char*)(p), 0, 2)
-#else
+#elif defined(__x86_64__)
 #define mag_prefetcht0(p) _mm_prefetch((const char*)(p), _MM_HINT_T0)
 #define mag_prefetcht1(p) _mm_prefetch((const char*)(p), _MM_HINT_T1)
+#else
+#define mag_prefetcht0(p)
+#define mag_prefetcht1(p)
 #endif
 
 static MAG_AINLINE void mag_mm_tile_8x8_float32(int64_t kc, const float *restrict a, ptrdiff_t lda, const float *restrict b, ptrdiff_t ldb, float *restrict c, ptrdiff_t ldc, bool acc) {
@@ -370,7 +373,38 @@ static MAG_AINLINE void mag_mm_tile_8x8_float32(int64_t kc, const float *restric
         vst1q_f32(c + r*ldc + 4, C[r][1]);
     }
 #else
-#error "Unsupported architecture"
+  for (int r = 0; r < 8; ++r) {
+        float C0 = acc ? c[r*ldc + 0] : 0.0f;
+        float C1 = acc ? c[r*ldc + 1] : 0.0f;
+        float C2 = acc ? c[r*ldc + 2] : 0.0f;
+        float C3 = acc ? c[r*ldc + 3] : 0.0f;
+        float C4 = acc ? c[r*ldc + 4] : 0.0f;
+        float C5 = acc ? c[r*ldc + 5] : 0.0f;
+        float C6 = acc ? c[r*ldc + 6] : 0.0f;
+        float C7 = acc ? c[r*ldc + 7] : 0.0f;
+        for (int64_t k = 0; k < kc; ++k) {
+            const float A = a[k*8 + r];
+            const float *restrict B = b + k*ldb;
+            C0 += A * B[0];
+            C1 += A * B[1];
+            C2 += A * B[2];
+            C3 += A * B[3];
+            C4 += A * B[4];
+            C5 += A * B[5];
+            C6 += A * B[6];
+            C7 += A * B[7];
+
+        }
+        c[r*ldc + 0] = C0;
+        c[r*ldc + 1] = C1;
+        c[r*ldc + 2] = C2;
+        c[r*ldc + 3] = C3;
+        c[r*ldc + 4] = C4;
+        c[r*ldc + 5] = C5;
+        c[r*ldc + 6] = C6;
+        c[r*ldc + 7] = C7;
+
+    }
 #endif
 }
 

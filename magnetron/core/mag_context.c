@@ -23,10 +23,13 @@
 static void mag_system_host_info_dump(mag_context_t *ctx) {
     mag_log_info("OS/Kernel: %s", ctx->machine.os_name);
     const char *cpu_arch = "?";
+    (void)cpu_arch;
 #if defined(__x86_64__) || defined(_M_X64)
     cpu_arch = "x86-64";
 #elif defined(__aarch64__) || defined(_M_ARM64)
     cpu_arch = "aarch64";
+#elif defined(__loongarch64)
+    cpu_arch = "loongarch64";
 #else
 #error "Unknwon CPU arch"
 #endif
@@ -136,7 +139,7 @@ mag_context_t *mag_ctx_create() {
     /* Init memory pools */
     mag_slab_init(&ctx->tensor_slab, sizeof(mag_tensor_t), __alignof(mag_tensor_t), 0x1000);
     mag_slab_init(&ctx->storage_slab, sizeof(mag_storage_buffer_t), __alignof(mag_storage_buffer_t), 0x1000);
-    mag_slab_init(&ctx->view_meta_slab, sizeof(mag_view_meta_t), __alignof(mag_view_meta_t), 0x1000);
+    mag_slab_init(&ctx->view_meta_slab, sizeof(mag_view_meta_t), __alignof(mag_view_meta_t), 0x0fff);
     mag_slab_init(&ctx->au_state_slab, sizeof(mag_au_state_t), __alignof(mag_au_state_t), 0x1000);
 
     ctx->tr_id = mag_thread_id(); /* Get thread ID. */

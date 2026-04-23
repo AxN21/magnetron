@@ -269,6 +269,14 @@ static bool mag_blas_detect_gen_optimal_spec(const mag_context_t *ctx, mag_kerne
 
 #undef mag_cpu_blas_spec_decl
 
+#else
+
+static bool mag_blas_detect_gen_optimal_spec(const mag_context_t *ctx, mag_kernel_registry_t *kernels) {
+    (void)ctx;
+    (void)kernels;
+    return false;
+}
+
 #endif
 
 bool mag_blas_detect_optimal_specialization(const mag_context_t *ctx, mag_kernel_registry_t *kernels) {

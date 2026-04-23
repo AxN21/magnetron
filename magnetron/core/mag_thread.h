@@ -93,6 +93,8 @@ typedef pthread_cond_t mag_condvar_t;
 #endif
 #elif defined(__aarch64__)
 #define mag_cpu_pause() __asm__ __volatile__("yield" ::: "memory")
+#elif defined(__loongarch64)
+#define mag_cpu_pause() __asm__ __volatile__("nop" ::: "memory")
 #else
 #error "Unsupported architecture for mag_cpu_pause()"
 #endif
