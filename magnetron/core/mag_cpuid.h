@@ -88,8 +88,10 @@ typedef enum mag_amd64_cap_t {
     MAG_AMD64_CAP__NUM
 #undef _
 } mag_amd64_cap_t;
+
 typedef uint64_t mag_amd64_cap_bitset_t;
 mag_static_assert(MAG_AMD64_CAP__NUM <= sizeof(mag_amd64_cap_bitset_t)<<3); /* Must fit in 64 bits. */
+
 #define mag_amd64_cap_bit(x) (((mag_amd64_cap_bitset_t)1)<<((x)&63))
 #define mag_amd64_cap(name) mag_amd64_cap_bit(MAG_AMD64_CAP_##name)
 
@@ -119,14 +121,40 @@ typedef enum mag_arm64_cap_t {
     MAG_ARM64_CAP__NUM
 #undef _
 } mag_arm64_cap_t;
+
 typedef uint64_t mag_arm64_cap_bitset_t;
 mag_static_assert(MAG_ARM64_CAP__NUM <= sizeof(mag_arm64_cap_bitset_t)<<3); /* Must fit in 64 bits. */
+
 #define mag_arm64_cap_bit(x) (((mag_arm64_cap_bitset_t)1)<<((x)&63))
 #define mag_arm64_cap(name) mag_arm64_cap_bit(MAG_ARM64_CAP_##name)
 
 extern const char *const mag_arm64_cpu_cap_names[MAG_ARM64_CAP__NUM];
 extern void mag_probe_cpu_arm64(mag_arm64_cap_bitset_t *o, int64_t *sve_width);
 extern void mag_probe_cpu_cache_topology(mag_arm64_cap_bitset_t caps, size_t *ol1, size_t *ol2, size_t *ol3);
+
+#elif defined(__loongarch64) /* Loongson / Godson */
+
+#define mag_loongarch64_capdef(_, __) \
+    _(NONE)__\
+    _(LSX)__\
+    _(LASX)__
+
+typedef enum mag_loongarch64_cap_t {
+    #define _(ident) MAG_LOONGARCH64_CAP_##ident
+    mag_loongarch64_capdef(_, MAG_SEP)
+    MAG_LOONGARCH64_CAP__NUM
+    #undef _
+} mag_loongarch64_cap_t;
+
+typedef uint64_t mag_loongarch64_cap_bitset_t;
+mag_static_assert(MAG_LOONGARCH64_CAP__NUM <= sizeof(mag_loongarch64_cap_bitset_t)<<3); /* Must fit in 64 bits. */
+
+#define mag_loongarch64_cap_bit(x) (((mag_loongarch64_cap_bitset_t)1)<<((x)&63))
+#define mag_loongarch64_cap(name) mag_loongarch64_cap_bit(MAG_LOONGARCH64_CAP_##name)
+
+extern const char *const mag_loongarch64_cpu_cap_names[MAG_LOONGARCH64_CAP__NUM];
+extern void mag_probe_cpu_loongarch64(mag_loongarch64_cap_bitset_t *o);
+extern void mag_probe_cpu_cache_topology(mag_loongarch64_cap_bitset_t caps, size_t *ol1, size_t *ol2, size_t *ol3);
 
 #endif
 

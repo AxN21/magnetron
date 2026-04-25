@@ -374,10 +374,11 @@ void mag_machine_info_probe(mag_machine_info_t *ma) {
 #elif defined(__aarch64__)
     mag_probe_cpu_arm64(&ma->arm64_cpu_caps, &ma->arm64_cpu_sve_width);
     caps = ma->arm64_cpu_caps;
+#elif defined(__loongarch64) /* Loongson / Godson */
+    mag_probe_cpu_loongarch64(&ma->loongarch64_cpu_caps);
+    caps = ma->loongarch64_cpu_caps;
 #endif
-#if defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__)
     mag_probe_cpu_cache_topology(caps, &ma->cpu_l1_size, &ma->cpu_l2_size, &ma->cpu_l3_size);
-#endif
     if (mag_unlikely(!*ma->os_name)) snprintf(ma->os_name, sizeof(ma->os_name), "Unknown");
     if (mag_unlikely(!*ma->cpu_name)) snprintf(ma->cpu_name, sizeof(ma->cpu_name), "Unknown");
 }

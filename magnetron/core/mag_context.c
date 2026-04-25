@@ -46,7 +46,7 @@ static void mag_system_host_info_dump(mag_context_t *ctx) {
 #if defined(__x86_64__) || defined(_M_X64) /* Print detected CPU features for x86-64 platforms. */
     if (mag_log_level() >= MAG_LOG_LEVEL_INFO) {
         mag_log_info("%s CPU flags:", cpu_arch);
-        for (unsigned i=0, j=0; i < MAG_AMD64_CAP__NUM; ++i) {
+        for (uint32_t i=0, j=0; i < MAG_AMD64_CAP__NUM; ++i) {
             if (i == MAG_AMD64_CAP_AMD || i == MAG_AMD64_CAP_INTEL) continue; /* Skip vendor caps */
             if (ctx->machine.amd64_cpu_caps & mag_amd64_cap_bit(i)) {
                 if (!(j++&7)) printf(j-1 ? "\n\t" : "\t");
@@ -57,10 +57,21 @@ static void mag_system_host_info_dump(mag_context_t *ctx) {
     }
 #elif defined(__aarch64__) /* Print detected CPU features for ARM64 platforms. */
     if (mag_log_level() >= MAG_LOG_LEVEL_INFO) {
-        printf(MAG_CC_CYAN "[magnetron] " MAG_CC_RESET "%s caps: ", cpu_arch);
+        mag_log_info("%s CPU flags:", cpu_arch);
         for (uint32_t i=0; i < MAG_ARM64_CAP__NUM; ++i)
             if (ctx->machine.arm64_cpu_caps & (1ull<<i))
                 printf("%s ", mag_arm64_cpu_cap_names[i]);
+        putchar('\n');
+    }
+#elif defined(__loongarch64) /* Print detected CPU features for Loongson / Godson */
+    if (mag_log_level() >= MAG_LOG_LEVEL_INFO) {
+        mag_log_info("%s CPU flags:", cpu_arch);
+        for (uint32_t i=0, j=0; i < MAG_LOONGARCH64_CAP__NUM; ++i) {
+            if (ctx->machine.loongarch64_cpu_caps & mag_loongarch64_cap_bit(i)) {
+                if (!(j++&7)) printf(j-1 ? "\n\t" : "\t");
+                printf("%s ", mag_loongarch64_cpu_cap_names[i]);
+            }
+        }
         putchar('\n');
     }
 #endif
@@ -139,7 +150,7 @@ mag_context_t *mag_ctx_create() {
     /* Init memory pools */
     mag_slab_init(&ctx->tensor_slab, sizeof(mag_tensor_t), __alignof(mag_tensor_t), 0x1000);
     mag_slab_init(&ctx->storage_slab, sizeof(mag_storage_buffer_t), __alignof(mag_storage_buffer_t), 0x1000);
-    mag_slab_init(&ctx->view_meta_slab, sizeof(mag_view_meta_t), __alignof(mag_view_meta_t), 0x0fff);
+    mag_slab_init(&ctx->view_meta_slab, sizeof(mag_view_meta_t), __alignof(mag_view_meta_t), 0x1000);
     mag_slab_init(&ctx->au_state_slab, sizeof(mag_au_state_t), __alignof(mag_au_state_t), 0x1000);
 
     ctx->tr_id = mag_thread_id(); /* Get thread ID. */

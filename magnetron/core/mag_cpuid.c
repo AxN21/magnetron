@@ -341,6 +341,7 @@ void mag_probe_cpu_cache_topology(mag_amd64_cap_bitset_t caps, size_t *ol1, size
 const char *const mag_arm64_cpu_cap_names[MAG_ARM64_CAP__NUM] = {
     mag_armd64_capdef(_, MAG_SEP)
 };
+#undef _
 
 void mag_probe_cpu_arm64(mag_arm64_cap_bitset_t *o, int64_t *sve_width) {
     *o = MAG_ARM64_CAP_NONE;
@@ -456,6 +457,45 @@ void mag_probe_cpu_cache_topology(mag_arm64_cap_bitset_t caps, size_t *ol1, size
     *ol2 = 512ull<<10;
     *ol3 = 1024ull<<10;
 #endif
+}
+
+#elif defined(__loongarch64) /* Loongson / Godson */
+
+#include <sys/auxv.h>
+
+#define _(ident) #ident
+const char *const mag_loongarch64_cpu_cap_names[MAG_LOONGARCH64_CAP__NUM] = {
+    mag_loongarch64_capdef(_, MAG_SEP)
+};
+#undef _
+
+
+void mag_probe_cpu_loongarch64(mag_loongarch64_cap_bitset_t *o) {
+    unsigned long hwcap = getauxval(AT_HWCAP);
+    uint32_t cfg = 0;
+    __asm__ __volatile__("cpucfg %0,%1\n" : "=r"(cfg) : "r"(0x2));
+    if ((cfg&(1u<<6)) && (hwcap&(1u<<4))) *o|=mag_loongarch64_cap(LSX);
+    if ((cfg&(1u<<7)) && (hwcap&(1u<<5))) *o|=mag_loongarch64_cap(LASX);
+}
+
+void mag_probe_cpu_cache_topology(mag_loongarch64_cap_bitset_t caps, size_t *ol1, size_t *ol2, size_t *ol3) {
+    uint32_t cfg = 0;
+    __asm__ __volatile__("cpucfg %0,%1\n" : "=r"(cfg) : "r"(0x10));
+    if (cfg & 0x0004) {
+        uint32_t cfg2 = 0;
+        __asm__ __volatile__("cpucfg %0,%1\n" : "=r"(cfg2) : "r"(0x12));
+        *ol1 = ((cfg2&0xffff)+1)*(1ull<<((cfg2&0x7f000000)>>24))*(1ull<<((cfg2&0xff0000)>>16));
+    }
+    if (cfg & 0x0008) {
+        uint32_t cfg2 = 0;
+        __asm__ __volatile__("cpucfg %0,%1\n" : "=r"(cfg2) : "r"(0x13)); 
+        *ol2 = ((cfg2&0xffff)+1)*(1ull<<((cfg2&0x7f000000)>>24))*(1ull<<((cfg2&0xff0000)>>16));
+    }
+    if (cfg & 0x0400) {
+        uint32_t cfg2 = 0;
+        __asm__ __volatile__("cpucfg %0,%1\n" : "=r"(cfg2) : "r"(0x14)); 
+        *ol3 = ((cfg2&0xffff)+1)*(1ull<<((cfg2&0x7f000000)>>24))*(1ull<<((cfg2&0xff0000)>>16));
+    }
 }
 
 #endif
