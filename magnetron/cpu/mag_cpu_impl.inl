@@ -1214,4 +1214,17 @@ mag_arm64_cap_bitset_t MAG_BLAS_SPECIALIZATION_FEAT_REQUEST(void) {
     return caps;
 }
 
+#elif defined(__loongarch64) /* Loongson / Godson */
+
+mag_loongarch64_cap_bitset_t MAG_BLAS_SPECIALIZATION_FEAT_REQUEST(void) {
+    mag_loongarch64_cap_bitset_t caps = 0;
+#ifdef __loongarch_sx
+    caps|=mag_loongarch64_cap(LSX);
+#endif
+#ifdef __loongarch_asx
+    caps|=mag_loongarch64_cap(LASX);
+#endif
+    return caps;
+}
+
 #endif
