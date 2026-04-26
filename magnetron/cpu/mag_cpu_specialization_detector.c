@@ -197,7 +197,7 @@ extern void mag_cpu_blas_specialization_##arch##_##flag(mag_kernel_registry_t *k
             mag_cpu_specialization_extern(arm64, v82);
         #endif
 
-      static const mag_cpu_specialization_t specializations[] = { /* Dynamic selectable BLAS permutations, sorted from best to worst score. */
+      static const mag_cpu_specialization_t specializations[] = {
             #ifdef MAG_HAVE_CPU_ARMV9_A_SVE2
               mag_cpu_specialization_configure(arm64, v9_sve2),
             #endif
@@ -218,58 +218,29 @@ extern void mag_cpu_blas_specialization_##arch##_##flag(mag_kernel_registry_t *k
         return specializations;
     }
 
-#elif defined(__loongarch64) /* Loongson / Godson backend selection */
+#elif defined(__loongarch64) /* Loongson / Godson */
 
-typedef struct mag_loongarch64_specialization_dispatch_t {
-    const char *name;
-    mag_loongarch64_cap_bitset_t (*get_cap_permutation)(void);
-    void (*inject_kernels)(mag_kernel_registry_t *kernels);
-} mag_loongarch64_specialization_dispatch_t;
+    static uint64_t mag_get_cpu_host_caps(const mag_context_t *ctx) { return ctx->machine.loongarch64_cpu_caps; }
 
-#define mag_loongarch64_spec_extern(feat) \
-    mag_loongarch64_cap_bitset_t mag_cpu_blas_specialization_loongarch64_##feat##_features(void); \
-    extern void mag_cpu_blas_specialization_loongarch64_##feat(mag_kernel_registry_t* kernels)
-
-#define mag_loongarch64_spec_dispatch(feat) \
-    (mag_loongarch64_specialization_dispatch_t) { \
-        .name = "loongarch64-"#feat, \
-        .get_cap_permutation = &mag_cpu_blas_specialization_loongarch64_##feat##_features, \
-        .inject_kernels = &mag_cpu_blas_specialization_loongarch64_##feat \
-}
-
-#ifdef MAG_HAVE_CPU_LSX
-mag_loongarch64_spec_extern(lsx);
-#endif
-#ifdef MAG_HAVE_CPU_LASX
-mag_loongarch64_spec_extern(lasx);
-#endif
-
-static bool mag_blas_detect_gen_optimal_spec(const mag_context_t *ctx, mag_kernel_registry_t *kernels) {
-    const mag_loongarch64_specialization_dispatch_t impls[] = { /* Dynamic selectable BLAS permutations, sorted from best to worst score. */
-        #ifdef MAG_HAVE_CPU_LASX
-            mag_loongarch64_spec_dispatch(lasx),
-        #endif
+    static const mag_cpu_specialization_t *mag_get_cpu_specializations(const mag_context_t *ctx, size_t *num) {
         #ifdef MAG_HAVE_CPU_LSX
-            mag_loongarch64_spec_dispatch(lsx),
+            mag_cpu_specialization_extern(loongarch64, lsx);
         #endif
-    };
+        #ifdef MAG_HAVE_CPU_LASX
+            mag_cpu_specialization_extern(loongarch64, lasx);
+        #endif
 
-    mag_loongarch64_cap_bitset_t cap_avail = ctx->machine.loongarch64_cpu_caps;
-    for (size_t i=0; i < sizeof(impls)/sizeof(*impls); ++i) { /* Find best blas spec for the host CPU */
-        const mag_loongarch64_specialization_dispatch_t *spec = impls+i;
-        mag_loongarch64_cap_bitset_t cap_required = (*spec->get_cap_permutation)(); /* Get requires features */
-        if ((cap_avail & cap_required) == cap_required) { /* Since specializations are sorted by score, we found the perfect spec. */
-            (*spec->inject_kernels)(kernels);
-            mag_log_info("Using tuned BLAS specialization: %s", spec->name);
-            return true;
-        }
+        static const mag_cpu_specialization_t specializations[] = { /* Order matters, sorted from best to worst */
+            #ifdef MAG_HAVE_CPU_LASX
+                mag_cpu_specialization_configure(loongarch64, lasx),
+            #endif
+            #ifdef MAG_HAVE_CPU_LSX
+                mag_cpu_specialization_configure(loongarch64, lsx),
+            #endif
+        };
+        *num = sizeof(specializations)/sizeof(*specializations);
+        return specializations;
     }
-
-    /* No matching specialization found, use generic */
-    mag_cpu_blas_specialization_fallback(kernels);
-    mag_log_info("Using fallback BLAS specialization");
-    return false; /* No spec used, fallback is active */
-}
 
 #else
 
