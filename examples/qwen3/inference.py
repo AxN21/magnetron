@@ -74,6 +74,7 @@ def clamp_history_by_tokens(
 @dataclass
 class InferenceConfig:
     system: str = 'You are a helpful assistant.'
+    device: str = 'cpu'
     max_ctx: int = 4096
     reserve_gen: int = 1024
     max_tokens: int = 1024
@@ -85,6 +86,7 @@ class InferenceConfig:
     def from_args(cls, args: argparse.Namespace) -> 'InferenceConfig':
         return cls(
             system=args.system,
+            device=args.device,
             max_ctx=args.max_ctx,
             reserve_gen=args.reserve_gen,
             max_tokens=args.max_tokens,
@@ -104,6 +106,8 @@ class InferenceEngine:
         start = time.perf_counter()
         context.stop_grad_recorder()
         context.manual_seed(config.seed)
+        if context.is_device_available(config.device):
+            context.set_default_device(config.device)
         console.print(f'Loading model from snapshot: {snapshot}', style='dim')
         self.model = Qwen3Model.from_pretrained_snapshot(snapshot)
         self.tokenizer = HFTokenizer(REPO_ID)

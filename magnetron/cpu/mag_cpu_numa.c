@@ -9,7 +9,7 @@
 ** +---------------------------------------------------------------------+
 */
 
-#include "mag_numa.h"
+#include "mag_cpu_numa.h"
 
 #ifdef __gnu_linux__
 #include <syscall.h>

@@ -15,9 +15,6 @@ from typing import Any
 from magnetron import Tensor, Snapshot, nn, dtype, context
 from dataclasses import dataclass
 
-if context.is_device_available('cuda'):
-    context.set_default_device('cuda')
-
 _EOS: set[int] = {151645, 151643}
 
 

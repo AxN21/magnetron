@@ -10,14 +10,14 @@
 */
 
 #include "mag_cpu.h"
+#include "mag_cpu_specialization_detector.h"
 #include "mag_cpu_threadpool.h"
-#include "mag_cpu_detect_optimal.h"
-#include "mag_tls_arena.h"
+#include "mag_cpu_tls_arena.h"
 
-#include <core/mag_context.h>
-#include <core/mag_thread.h>
-#include <core/mag_tensor.h>
 #include <core/mag_alloc.h>
+#include <core/mag_context.h>
+#include <core/mag_tensor.h>
+#include <core/mag_thread.h>
 
 MAG_THREAD_LOCAL mag_scratch_arena_t mag_tls_arena = MAG_SCRATCH_ARENA_INIT(4ull<<20);
 

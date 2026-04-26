@@ -82,6 +82,7 @@ def _main() -> None:
     args.add_argument('--system', type=str, default='You are a helpful assistant.', help='System prompt')
     args.add_argument('--max_ctx', type=int, default=4096, help='Max prompt context tokens (including system)')
     args.add_argument('--reserve_gen', type=int, default=1024, help='Reserve tokens for generation headroom')
+    args.add_argument('--device', type=str, default='cuda', choices=['cpu', 'cuda'])
     args = args.parse_args()
 
     if not args.repl and not args.prompt:

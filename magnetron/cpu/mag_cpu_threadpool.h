@@ -13,8 +13,8 @@
 #define MAG_CPU_THREADPOOL_H
 
 #include "mag_cpu_kernel_data.h"
+#include "mag_cpu_numa.h"
 #include "mag_cpu_phase_fence.h"
-#include "mag_numa.h"
 
 #ifdef __cplusplus
 extern "C" {

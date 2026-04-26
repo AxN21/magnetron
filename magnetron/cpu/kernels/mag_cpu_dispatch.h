@@ -9,16 +9,17 @@
 ** +---------------------------------------------------------------------+
 */
 
-#include "mag_cpu.h"
-#include "mag_tls_arena.h"
+#include "../mag_cpu.h"
+#include "../mag_cpu_tls_arena.h"
 
-#include <core/mag_tensor.h>
-#include <core/mag_cpuid.h>
 #include <core/mag_alloc.h>
+#include <core/mag_bfloat16.h>
 #include <core/mag_coords.h>
 #include <core/mag_coords_iter.h>
+#include <core/mag_cpuid.h>
 #include <core/mag_float16.h>
-#include <core/mag_bfloat16.h>
+#include <core/mag_tensor.h>
+#include <core/mag_u128.h>
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -90,18 +91,61 @@ typedef uint16_t __fp16; /* MSVC does not support __fp16. */
 #endif
 #endif
 
-#include "mag_cpu_impl_crc32c.inl"
-#include "mag_cpu_impl_cast.inl"
-#include "mag_cpu_impl_approxfn.inl"
-#include "mag_cpu_impl_rand.inl"
-#include "mag_cpu_impl_veclib.inl"
-#include "mag_cpu_impl_ops_fill.inl"
-#include "mag_cpu_impl_ops_unary.inl"
-#include "mag_cpu_impl_ops_multinomial.inl"
-#include "mag_cpu_impl_ops_other.inl"
-#include "mag_cpu_impl_ops_binary.inl"
-#include "mag_cpu_impl_ops_reduce.inl"
-#include "mag_cpu_impl_ops_matmul.inl"
+static MAG_AINLINE mag_float16_t mag_float32_to_float16(float x) {
+#ifdef __F16C__
+#ifdef _MSC_VER
+    return (mag_float16_t){(uint16_t)_mm_extract_epi16(_mm_cvtps_ph(_mm_set_ss(x), 0), 0)};
+#else
+    return (mag_float16_t){_cvtss_sh(x, 0)};
+#endif
+#elif defined(__ARM_NEON) && !defined(_MSC_VER)
+    union {
+        __fp16 f;
+        uint16_t u;
+    } castor = {.f=(__fp16)x};
+    return (mag_float16_t){castor.u};
+#else
+    return mag_float16_from_float32_soft_fp(x);
+#endif
+}
+
+static MAG_AINLINE float mag_float16_to_float32(mag_float16_t x) {
+#ifdef __F16C__
+#ifdef _MSC_VER
+    return _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128(x.bits)));
+#else
+    return _cvtsh_ss(x.bits);
+#endif
+#elif defined(__ARM_NEON) && !defined(_MSC_VER)
+    union {
+        __fp16 f;
+        uint16_t u;
+    } castor = {.u=x.bits};
+    return castor.f;
+#else
+    return mag_float16_to_float32_soft_fp(x);
+#endif
+}
+
+static MAG_AINLINE mag_bfloat16_t mag_float32_to_bfloat16(float x) {
+    return mag_bfloat16_from_float32_soft_fp(x);
+}
+
+static MAG_AINLINE float mag_bfloat16_to_float32(mag_bfloat16_t x) {
+    return mag_bfloat16_to_float32_soft_fp(x);
+}
+
+#include "mag_cpu_simd_functions.h"
+#include "mag_cpu_veclib.h"
+
+/* Order matters, do not touch */
+#include "mag_cpu_crc32c.h"
+#include "mag_cpu_kernels_unary.h"
+#include "mag_cpu_kernels_binary.h"
+#include "mag_cpu_kernels_fill.h"
+#include "mag_cpu_kernels_matmul.h"
+#include "mag_cpu_kernels_misc.h"
+#include "mag_cpu_kernels_reduction.h"
 
 static void (*const mag_lut_eval_kernels[MAG_OP__NUM][MAG_DTYPE__NUM])(const mag_kernel_payload_t *) = {
     [MAG_OP_NOP] = {

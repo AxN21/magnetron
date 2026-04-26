@@ -15,8 +15,8 @@
 #include <core/mag_backend.h>
 #include <core/mag_thread.h>
 
+#include "mag_cpu_numa.h"
 #include "mag_cpu_threadpool.h"
-#include "mag_numa.h"
 
 #ifdef __cplusplus
 extern "C" {

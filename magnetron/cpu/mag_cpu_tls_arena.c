@@ -9,7 +9,7 @@
 ** +---------------------------------------------------------------------+
 */
 
-#include "mag_tls_arena.h"
+#include "mag_cpu_tls_arena.h"
 
 #include <core/mag_alloc.h>
 

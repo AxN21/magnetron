@@ -10,12 +10,12 @@
 */
 
 #include "mag_cpu_threadpool.h"
-#include "mag_cpu_phase_fence.h"
 #include "mag_cpu_kernel_data.h"
-#include "mag_numa.h"
+#include "mag_cpu_numa.h"
+#include "mag_cpu_phase_fence.h"
 
-#include <core/mag_tensor.h>
 #include <core/mag_alloc.h>
+#include <core/mag_tensor.h>
 
 /* Await signal to start work */
 static bool mag_worker_await_work(mag_worker_t *worker, mag_thread_pool_t *pool) {

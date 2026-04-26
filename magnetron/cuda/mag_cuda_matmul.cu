@@ -272,7 +272,7 @@ namespace mag {
         };
 
         __device__ void arrive(){
-            uint64_t state;
+            [[maybe_unused]] uint64_t state;
             asm volatile(
                 "mbarrier.arrive.release.cta.shared::cta.b64 %0, [%1];"
                 : "=l"(state)
