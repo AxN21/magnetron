@@ -585,6 +585,19 @@ namespace mag::bindings {
       },
       "num_samples"_a = 1, "replacement"_a = false,
       "Sample indices from probabilities (last dim). Returns shape (..., num_samples)."
+      )
+    .def("one_hot",
+      [](const tensor_wrapper &self, int64_t num_classes) -> tensor_wrapper {
+        std::lock_guard lock {get_global_mutex()};
+        if (num_classes <= 0)
+          throw nb::value_error("num_classes must be > 0");
+        mag_tensor_t *out = nullptr;
+        mag_error_t err {};
+        throw_if_error(mag_one_hot(&err, &out, *self, num_classes), err);
+        return tensor_wrapper {out};
+      },
+      "num_classes"_a,
+      "One-hot encode integer indices. Returns shape (..., num_classes)."
     );
 
     cls.attr("cat") = nb::cpp_function(
