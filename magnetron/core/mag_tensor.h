@@ -68,6 +68,17 @@ struct mag_tensor_t {
 };
 MAG_RC_OBJECT_IS_VALID(mag_tensor_t);
 
+extern mag_status_t mag_tensor_init(
+  mag_error_t *err,
+  mag_tensor_t **out,
+  mag_context_t *ctx,
+  mag_storage_buffer_t *storage,
+  mag_dtype_t type,
+  int64_t rank,
+  const int64_t *shape,
+  mag_device_id_t device
+);
+
 extern MAG_EXPORT bool mag_all_shapes_equal_and_contig(const mag_tensor_t **tensors, size_t n); /* Returns true if shapes are equal and all tensors are contigous */
 
 #ifdef MAG_DEBUG

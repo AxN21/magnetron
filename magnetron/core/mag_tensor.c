@@ -186,6 +186,84 @@ static mag_status_t mag_tensor_dtor(void *self) {
   return MAG_STATUS_OK;
 }
 
+typedef struct mag_borrow_cookie_t {
+  void (*fn)(void *);
+  void *usr;
+} mag_borrow_cookie_t;
+
+static mag_status_t mag_borrowed_storage_dtor(void *self) {
+  mag_storage_buffer_t *buf = self;
+  mag_context_t *ctx = buf->ctx;
+  mag_assert(ctx->telemetry.num_alive_storages > 0, "double freed storage");
+  --ctx->telemetry.num_alive_storages;
+  mag_borrow_cookie_t *cookie = buf->aux.impl;
+  if (cookie) {
+    if (cookie->fn) (*cookie->fn)(cookie->usr);
+    (*mag_alloc)(cookie, 0, 0);
+  }
+  mag_slab_free(&ctx->storage_slab, buf);
+  return MAG_STATUS_OK;
+}
+
+mag_status_t mag_borrow_cpu_buffer(
+    mag_error_t *err,
+    mag_tensor_t **out,
+    mag_context_t *ctx,
+    void *data,
+    size_t num_bytes,
+    mag_dtype_t dtype,
+    int64_t rank,
+    const int64_t *shape,
+    bool is_writeable,
+    void (*release_callback)(void *usr),
+    void *usr
+) {
+  *out = NULL;
+  mag_contract(err, ERR_INVALID_PARAM, {}, release_callback != NULL, "on_release is NULL");
+  mag_contract(err, ERR_INVALID_PARAM, {}, data != NULL, "data is NULL with non-zero size");
+  mag_contract(err, ERR_INVALID_PARAM, {}, num_bytes > 0, "num_bytes must be > 0");
+  mag_contract(err, ERR_THREAD_MISMATCH, {}, mag_thread_id() == ctx->tr_id, "%" PRIu64 " != %" PRIu64 " Tensor must be created on the same thread as the context.", (uint64_t)mag_thread_id(), (uint64_t)ctx->tr_id);
+  mag_contract(err, ERR_INVALID_RANK, {}, rank >= 0 && rank <= MAG_MAX_DIMS, "Rank must be within [0, %d]", MAG_MAX_DIMS);
+  if (rank > 0) mag_contract(err, ERR_INVALID_PARAM, {}, shape != NULL, "Shape must not be NULL if rank > 0");
+  int64_t dts = (int64_t)mag_type_trait(dtype)->size;
+  int64_t numel=1;
+  for (int64_t i=0; i < rank; ++i) {
+    mag_contract(err, ERR_INVALID_DIM, {}, shape[i] > 0, "All shape dimensions must be > 0, but shape[%" PRIi64 "] = %" PRIi64, i, shape[i]);
+    mag_contract(err, ERR_DIM_OVERFLOW, {}, !mag_mulov64(shape[i], numel, &numel), "Dim prod overflowed: dim[%" PRIi64 "] = %" PRIi64, i, shape[i]);
+  }
+  int64_t need_bytes;
+  mag_contract(err, ERR_DIM_OVERFLOW, {}, !mag_mulov64(numel, dts, &need_bytes), "Total size overflowed: numel = %" PRIi64 ", dtype size = %" PRIi64, numel, dts);
+  mag_contract(err, ERR_INVALID_PARAM, {}, (size_t)need_bytes <= num_bytes, "Buffer too small: need at least %zu bytes, have %zu", (size_t)need_bytes, num_bytes);
+  mag_borrow_cookie_t *cookie = (*mag_alloc)(NULL, sizeof(*cookie), 0);
+  cookie->fn = release_callback;
+  cookie->usr = usr;
+  mag_device_t *cpu_device = NULL;
+  mag_contract(err, ERR_INVALID_DEVICE, { (*mag_alloc)(cookie, 0, 0); }, mag_backend_registry_get_backend_and_device_by_id(ctx->backend_registry, mag_device(CPU, 0), NULL, &cpu_device), "CPU backend is not available for borrow");
+  mag_storage_flags_t flags = MAG_STORAGE_FLAG_BORROWED|MAG_STORAGE_FLAG_HOST_VISIBLE;
+  if (is_writeable) flags |= MAG_STORAGE_FLAG_ACCESS_W;
+  mag_storage_buffer_t *buf = mag_slab_alloc(&ctx->storage_slab);
+  *buf = (mag_storage_buffer_t) {
+    .ctx=ctx,
+    .flags=flags,
+    .base=(uintptr_t)data,
+    .size=num_bytes,
+    .alignment=MAG_CPU_BUF_ALIGN, /* TODO: check that data is actually aligned to this */
+    .device=cpu_device,
+  };
+  buf->aux.impl = cookie;
+  mag_rc_init_object(buf, &mag_borrowed_storage_dtor);
+  ++ctx->telemetry.num_alive_storages;
+  mag_tensor_t *tensor = NULL;
+  mag_status_t stat = mag_tensor_init(err, &tensor, ctx, buf, dtype, rank, shape, mag_device(CPU, 0));
+  mag_rc_decref(buf);
+  if (mag_iserr(stat)) {
+    *out = NULL;
+    return stat;
+  }
+  *out = tensor;
+  return MAG_STATUS_OK;
+}
+
 size_t mag_tensor_numbytes(const mag_tensor_t *t) {
   return t->storage->size;
 }

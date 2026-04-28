@@ -239,6 +239,20 @@ extern MAG_EXPORT mag_status_t mag_load_image(mag_error_t *err, mag_tensor_t **o
 extern MAG_EXPORT mag_status_t mag_save_image(mag_error_t *err, mag_tensor_t *tensor, const char *file);
 extern MAG_EXPORT mag_status_t mag_load_audio(mag_error_t *err, mag_tensor_t **out, mag_context_t *ctx, const char *file, uint32_t *out_sample_rate, mag_device_id_t device);
 extern MAG_EXPORT mag_status_t mag_save_audio(mag_error_t *err, mag_tensor_t *tensor, const char *file, uint32_t sample_rate);
+extern MAG_EXPORT mag_status_t mag_borrow_cpu_buffer(
+    mag_error_t *err,
+    mag_tensor_t **out,
+    mag_context_t *ctx,
+    void *data,
+    size_t num_bytes,
+    mag_dtype_t dtype,
+    int64_t rank,
+    const int64_t *shape,
+    bool is_writeable,
+    void (*release_callback)(void *usr),
+    void *usr
+);
+
 extern MAG_EXPORT mag_status_t mag_copy_raw_(mag_error_t *err, mag_tensor_t *tensor, const void *data, size_t size_bytes);
 extern MAG_EXPORT mag_status_t mag_zero_(mag_error_t *err, mag_tensor_t *tensor);
 extern MAG_EXPORT mag_status_t mag_fill_(mag_error_t *err, mag_tensor_t *tensor, mag_scalar_t value);
@@ -246,6 +260,7 @@ extern MAG_EXPORT mag_status_t mag_masked_fill_(mag_error_t *err, mag_tensor_t *
 extern MAG_EXPORT mag_status_t mag_uniform_(mag_error_t *err, mag_tensor_t *tensor, mag_scalar_t min, mag_scalar_t max);
 extern MAG_EXPORT mag_status_t mag_normal_(mag_error_t *err, mag_tensor_t *tensor, mag_scalar_t mean, mag_scalar_t stddev);
 extern MAG_EXPORT mag_status_t mag_bernoulli_(mag_error_t *err, mag_tensor_t *tensor, mag_scalar_t p);
+
 extern MAG_EXPORT mag_status_t mag_clone(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x);
 extern MAG_EXPORT mag_status_t mag_cast(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, mag_dtype_t dst_type);
 extern MAG_EXPORT mag_status_t mag_transfer(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, mag_device_id_t device);

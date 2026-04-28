@@ -519,48 +519,8 @@ static bool mag_snapshot_insert_tensor_by_id(mag_snapshot_t *snap, uint32_t key_
   return true;
 }
 
-extern mag_status_t mag_tensor_init(mag_error_t *err, mag_tensor_t **out, mag_context_t *ctx, mag_storage_buffer_t *storage, mag_dtype_t type, int64_t rank, const int64_t *shape, mag_device_id_t device);
-
-static mag_status_t mag_cpu_storage_dtor(void *self) {
-  mag_storage_buffer_t *buf = self;
-  mag_context_t *ctx = buf->ctx;
-  mag_assert(ctx->telemetry.num_alive_storages > 0, "double freed storage");
-  --ctx->telemetry.num_alive_storages;
-  if (buf->flags & MAG_STORAGE_FLAG_BORROWED) {
-    mag_mmap_owner_t *owner = (mag_mmap_owner_t *)(uintptr_t)buf->aux.impl;
-    if (owner) mag_rc_decref(owner);
-  } else {
-    (*mag_alloc)((void *)buf->base, 0, MAG_CPU_BUF_ALIGN);
-  }
-  mag_slab_free(&ctx->storage_slab, buf);
-  return MAG_STATUS_OK;
-}
-
-static void mag_cpu_borrow_storage(
-  mag_device_t *cpu,
-  mag_storage_buffer_t **out,
-  const void *ptr,
-  size_t size,
-  mag_dtype_t dtype,
-  mag_mmap_owner_t *owner /* retained */
-) {
-  mag_context_t *ctx = cpu->ctx;
-  mag_storage_buffer_t *buf = mag_slab_alloc(&ctx->storage_slab);
-  *buf = (mag_storage_buffer_t){
-    .ctx = ctx,
-    .aux = {0},
-    .flags = MAG_STORAGE_FLAG_BORROWED,
-    .base = (uintptr_t)ptr,
-    .size = size,
-    .alignment = MAG_CPU_BUF_ALIGN, /* TODO: is this respected */
-    .device = cpu,
-  };
-  buf->flags &= ~MAG_STORAGE_FLAG_ACCESS_W;
-  buf->aux.impl = owner;
-  mag_rc_incref(owner);
-  mag_rc_init_object(buf, &mag_cpu_storage_dtor);
-  ++ctx->telemetry.num_alive_storages;
-  *out = buf;
+static void mag_snapshot_mmap_borrow_release(void *usr) {
+  if (usr) mag_rc_decref(usr);
 }
 
 mag_snapshot_t *mag_snapshot_deserialize(mag_context_t *ctx, const char *filename) {
@@ -625,13 +585,13 @@ mag_snapshot_t *mag_snapshot_deserialize(mag_context_t *ctx, const char *filenam
     mag_snap_verify(offset == offs, goto error); /* Verify offset */
     const uint8_t *blob = NULL;
     mag_snap_verify(mag_stream_rbytes_view(stream, &blob, nbytes), goto error);
-    mag_storage_buffer_t *storage = NULL;
-    mag_cpu_borrow_storage(cpu_device, &storage, blob, nbytes, desc->dtype, snap->mmap_owner);
+    mag_error_t berr = {0};
     mag_tensor_t *tensor = NULL;
-    mag_snap_verify(mag_isok(mag_tensor_init(NULL, &tensor, ctx, storage, desc->dtype, desc->rank, shape, mag_device(CPU, 0))), goto error);
+    if (mag_iserr(mag_borrow_cpu_buffer( &berr, &tensor, ctx, (void *)blob, nbytes, desc->dtype, desc->rank, shape, false, &mag_snapshot_mmap_borrow_release, snap->mmap_owner)))
+      goto error;
+    mag_rc_incref(snap->mmap_owner);
     mag_snap_verify(mag_snapshot_insert_tensor_by_id(snap, desc->key_id, tensor), mag_tensor_decref(tensor); goto error);
     mag_tensor_decref(tensor); /* Decref as the snapshot now holds a reference */
-    mag_rc_decref(storage); /* Decref as the snapshot now holds a reference */
     offs += nbytes;
   }
 
