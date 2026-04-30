@@ -93,7 +93,7 @@ namespace mag::bindings {
     int64_t offset,
     int64_t dim
   ) {
-    if (dim == rank) return PT();
+    if (dim == rank) return PT(data[offset]);
     int64_t size = shape[dim];
     PyObject *raw = PyList_New(size); // We use the raw Python API to preallocate the list's capacity
     if (!raw) throw std::runtime_error {"Failed to allocate list for tolist()"};
