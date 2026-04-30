@@ -9,8 +9,6 @@
 ** +---------------------------------------------------------------------+
 */
 
-#include "mag_cpu_simd.h"
-
 static MAG_AINLINE mag_vf32_t mag_vf32_exp(mag_vf32_t x) {
   mag_vf32_t r = mag_vf32_splat(0x1.8p23f);
   mag_vf32_t z = mag_vf32_fmadd(x, mag_vf32_splat(0x1.715476p+0f), r);

@@ -36,6 +36,8 @@ extern "C" {
 
 #if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
 
+  #define MAG_VF32_LANES ((int64_t)(sizeof(mag_vf32_t)/sizeof(float)))
+
   /* mask type */
   typedef uint32x4_t mag_vmask32_t;
   static MAG_AINLINE mag_vmask32_t mag_vmask32_zero(void) { return vdupq_n_u32(0); }
@@ -93,6 +95,50 @@ extern "C" {
   static MAG_AINLINE mag_vf32_t mag_vf32_not_bits(mag_vf32_t x) { return vreinterpretq_f32_u32(vmvnq_u32(vreinterpretq_u32_f32(x))); }
   static MAG_AINLINE mag_vf32_t mag_vf32_andnot_bits(mag_vf32_t x, mag_vf32_t y) { return vreinterpretq_f32_u32(vbicq_u32(vreinterpretq_u32_f32(y), vreinterpretq_u32_f32(x))); }
   static MAG_AINLINE mag_vf32_t mag_vf32_xor_bits(mag_vf32_t x, mag_vf32_t y) { return vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(x), vreinterpretq_u32_f32(y))); }
+
+  static MAG_AINLINE mag_vf32_t mag_vf32_loadu_f16(const mag_float16_t *p) {
+  #if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+      return vcvt_f32_f16(vld1_f16((const __fp16 *)p));
+  #else
+      mag_alignas(16) float tmp[4];
+      for (int i=0; i < MAG_VF32_LANES; ++i) tmp[i] = mag_float16_to_float32(p[i]);
+      return mag_vf32_loadu(tmp);
+  #endif
+  }
+
+  static MAG_AINLINE void mag_vf32_storeu_f16(mag_float16_t *p, mag_vf32_t v) {
+  #if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+      vst1_f16((__fp16 *)p, vcvt_f16_f32(v));
+  #else
+      mag_alignas(16) float tmp[4];
+      mag_vf32_storeu(tmp, v);
+      for (int i=0; i < MAG_VF32_LANES; ++i) p[i] = mag_float32_to_float16(tmp[i]);
+  #endif
+  }
+
+  static MAG_AINLINE mag_vf32_t mag_vf32_loadu_bf16(const mag_bfloat16_t *p) {
+  #if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+      uint16x4_t h = vld1_u16((const uint16_t *)p);
+      uint32x4_t u = vshll_n_u16(h, 16);
+      return vreinterpretq_f32_u32(u);
+  #else
+      mag_alignas(16) float tmp[4];
+      for (int i=0; i < MAG_VF32_LANES; ++i) tmp[i] = mag_bfloat16_to_float32(p[i]);
+      return mag_vf32_loadu(tmp);
+  #endif
+    }
+
+  static MAG_AINLINE void mag_vf32_storeu_bf16(mag_bfloat16_t *p, mag_vf32_t v) {
+  #if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+      uint32x4_t u = vreinterpretq_u32_f32(v);
+      uint16x4_t h = vmovn_u32(vshrq_n_u32(u, 16));
+      vst1_u16((uint16_t *)p, h);
+  #else
+      mag_alignas(16) float tmp[4];
+      mag_vf32_storeu(tmp, v);
+      for (int i=0; i < MAG_VF32_LANES; ++i) p[i] = mag_float32_to_bfloat16(tmp[i]);
+  #endif
+  }
 
   /* i32 vector */
   typedef int32x4_t mag_vi32_t;

@@ -9,6 +9,8 @@
 ** +---------------------------------------------------------------------+
 */
 
+#define mag_cvt_nop(x) (x)
+
 #define mag_gen_vrand_uniform_fp(T, CVT) \
   static void MAG_AINLINE mag_vrand_uniform_##T(mag_philox4x32_stream_t *prng, int64_t numel, T *restrict o, float min, float max) {  \
     int64_t i=0;  \

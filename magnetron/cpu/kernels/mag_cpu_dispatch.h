@@ -44,31 +44,6 @@
 #define mag_cmd_out(i) (payload->cmd->out[(i)])
 #define mag_cmd_attr(i) (payload->cmd->attrs[(i)])
 
-#define mag_remu(x, y) ((x) % (y)) /* Unsigned remainder is the same as in C */
-
-/* Arithmetic / logical shifts with defined behavior for out-of-bounds shift amounts */
-
-#define mag_sal(x, y, bits) (mag_unlikely((y) < 0 || (y) >= (bits)) ? 0 : (x)<<(y))
-#define mag_sar(x, y, bits) (mag_unlikely((y) < 0 || (y) >= (bits)) ? ((x) < 0 ? -1 : 0) : (x)>>(y))
-#define mag_shl(x, y, bits) (mag_unlikely((y) < 0 || (y) >= (bits)) ? 0 : (x)<<(y))
-#define mag_shr(x, y, bits) (mag_unlikely((y) < 0 || (y) >= (bits)) ? 0 : (x)>>(y))
-
-/* Alias names for kernel macros based on signess suffix (i or u) */
-
-#define mag_shlu(x, y, bits) mag_shl(x, y, bits)
-#define mag_shru(x, y, bits) mag_shr(x, y, bits)
-#define mag_shli(x, y, bits) mag_sal(x, y, bits)
-#define mag_shri(x, y, bits) mag_sar(x, y, bits)
-
-#define mag_sgnu(x) ((x)>0)
-#define mag_sgni(x) (((x)>0)-((x)<0))
-
-#define mag_floordivi(x, y) (((x) - mag_remi((x), (y)))/(y))
-#define mag_floordivu(x, y) ((x)/(y))
-#define mag_floordivf(x, y) (floorf((x)/(y)))
-
-#define mag_powf(x,y) powf((x), (y))
-
 extern MAG_THREAD_LOCAL mag_scratch_arena_t mag_tls_arena; /* 4 MiB keep before decay */
 
 #ifdef __AVX512F__ /* Vector register width in bytes */
@@ -135,17 +110,20 @@ static MAG_AINLINE float mag_bfloat16_to_float32(mag_bfloat16_t x) {
   return mag_bfloat16_to_float32_soft_fp(x);
 }
 
+#include "mag_cpu_simd.h"
 #include "mag_cpu_simd_functions.h"
-#include "mag_cpu_veclib.h"
 
 /* Order matters, do not touch */
 #include "mag_cpu_crc32c.h"
 #include "mag_cpu_kernels_unary.h"
+#include "mag_cpu_kernels_cast.h"
 #include "mag_cpu_kernels_binary.h"
 #include "mag_cpu_kernels_fill.h"
 #include "mag_cpu_kernels_matmul.h"
 #include "mag_cpu_kernels_misc.h"
 #include "mag_cpu_kernels_reduction.h"
+
+static void mag_nop(const mag_kernel_payload_t *payload) { (void)payload; }
 
 static void (*const mag_lut_eval_kernels[MAG_OP__NUM][MAG_DTYPE__NUM])(const mag_kernel_payload_t *) = {
   [MAG_OP_NOP] = {
