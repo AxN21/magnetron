@@ -178,12 +178,10 @@ static MAG_AINLINE mag_vf32_t mag_vec_rcp_f32(mag_vf32_t x) {
   r = mag_vf32_rcp_refine_step(x, r);
   r = mag_vf32_rcp_refine_step(x, r);
   return r;
-
 }
 static MAG_AINLINE mag_vf32_t mag_vec_sigmoid_dv_f32(mag_vf32_t x) {
   mag_vf32_t s = mag_vf32_sigmoid(x);
   return mag_vf32_mul(s, mag_vf32_sub(mag_vf32_splat(1.f), s));
-
 }
 static MAG_AINLINE mag_vf32_t mag_vec_silu_dv_f32(mag_vf32_t x) {
   mag_vf32_t s = mag_vf32_sigmoid(x);
@@ -193,9 +191,19 @@ static MAG_AINLINE mag_vf32_t mag_vec_silu_dv_f32(mag_vf32_t x) {
 static MAG_AINLINE mag_vf32_t mag_vec_tanh_dv_f32(mag_vf32_t x) {
   mag_vf32_t t = mag_vf32_tanh(x);
   return mag_vf32_sub(mag_vf32_splat(1.f), mag_vf32_mul(t, t));
-
 }
 static MAG_AINLINE mag_vf32_t mag_vec_relu_dv_f32(mag_vf32_t x) { return mag_vf32_step(x); }
+static MAG_AINLINE mag_vf32_t mag_vec_log_f32(mag_vf32_t x) { return mag_vf32_log(x); }
+static MAG_AINLINE mag_vf32_t mag_vec_abs_f32(mag_vf32_t x) { return mag_vf32_abs(x); }
+static MAG_AINLINE mag_vf32_t mag_vec_neg_f32(mag_vf32_t x) { return mag_vf32_sub(mag_vf32_zero(), x); }
+static MAG_AINLINE mag_vf32_t mag_vec_sqr_f32(mag_vf32_t x) { return mag_vf32_mul(x, x); }
+static MAG_AINLINE mag_vf32_t mag_vec_sqrt_f32(mag_vf32_t x) { return mag_vf32_sqrt(x); }
+static MAG_AINLINE mag_vf32_t mag_vec_sgn_f32(mag_vf32_t x) {
+  return mag_vf32_sub(
+    mag_vf32_blend(mag_vf32_cmpgt(x, mag_vf32_zero()), mag_vf32_splat(1.f), mag_vf32_zero()),
+    mag_vf32_blend(mag_vf32_cmplt(x, mag_vf32_zero()), mag_vf32_splat(1.f), mag_vf32_zero())
+  );
+}
 
 #define mag_gen_unary_scalar(T, TF, name, suffix) \
   static void MAG_HOTPROC mag_##name##_##TF(const mag_kernel_payload_t *payload) { \
@@ -271,11 +279,11 @@ static MAG_AINLINE void mag_vf32_storeu_f32(float *p, mag_vf32_t v) { mag_vf32_s
   mag_gen_unary_simd(mag_float16_t, float16, f16, mag_vf32_loadu_f16, mag_vf32_storeu_f16, name) \
   mag_gen_unary_simd(mag_bfloat16_t, bfloat16, bf16, mag_vf32_loadu_bf16, mag_vf32_storeu_bf16, name)
 
-mag_gen_float_unary_scalar(log)
+mag_gen_float_unary_simd(log)
 mag_gen_float_unary_scalar(log10)
 mag_gen_float_unary_scalar(log1p)
 mag_gen_float_unary_scalar(log2)
-mag_gen_float_unary_scalar(sqrt)
+mag_gen_float_unary_simd(sqrt)
 mag_gen_float_unary_simd(sin)
 mag_gen_float_unary_simd(cos)
 mag_gen_float_unary_simd(tan)
@@ -297,10 +305,10 @@ mag_gen_float_unary_scalar(floor)
 mag_gen_float_unary_scalar(ceil)
 mag_gen_float_unary_scalar(round)
 mag_gen_float_unary_scalar(trunc)
-mag_gen_float_unary_scalar(abs)
-mag_gen_float_unary_scalar(sgn)
-mag_gen_float_unary_scalar(neg)
-mag_gen_float_unary_scalar(sqr)
+mag_gen_float_unary_simd(abs)
+mag_gen_float_unary_simd(sgn)
+mag_gen_float_unary_simd(neg)
+mag_gen_float_unary_simd(sqr)
 mag_gen_float_unary_simd(rcp)
 mag_gen_float_unary_scalar(rsqrt)
 mag_gen_float_unary_simd(step)
@@ -338,155 +346,108 @@ mag_gen_int_unary(sqr)
 #undef mag_gen_float_unary_simd
 #undef mag_gen_unary_scalar
 #undef mag_gen_unary_simd
-#undef MAG_VF32_LANES
 #undef mag_fn_abs_int
 #undef mag_fn_sgn_int
 #undef mag_fn_neg_int
 #undef mag_fn_not_int
 #undef mag_fn_sqr_int
 
-static void MAG_HOTPROC mag_softmax_float32(const mag_kernel_payload_t *payload) {
-  mag_tensor_t *r = mag_cmd_out(0);
-  const mag_tensor_t *x = mag_cmd_in(0);
-  mag_assert(mag_tensor_is_contiguous(x), "Softmax input tensor must be contiguous");
-  float *br = (float *)mag_tensor_data_ptr_mut(r);
-  const float *bx = (const float *)mag_tensor_data_ptr(x);
-  int64_t rank  = r->coords.rank;
-  int64_t numel = r->numel;
-  if (mag_unlikely(!numel)) return;
-  if (rank == 0) {
-    if (payload->thread_idx == 0) *br = 1.0f;
-    return;
+#define mag_gen_softmax_simd(T, TF, ONE, LOAD, STORE, TO_F32, FROM_F32) \
+  static void MAG_HOTPROC mag_softmax_##TF(const mag_kernel_payload_t *payload) { \
+    mag_tensor_t *r = mag_cmd_out(0); \
+    const mag_tensor_t *x = mag_cmd_in(0); \
+    mag_assert(mag_tensor_is_contiguous(x), "Softmax input tensor must be contiguous"); \
+    T *br = (T *)mag_tensor_data_ptr_mut(r); \
+    const T *bx = (const T *)mag_tensor_data_ptr(x); \
+    int64_t rank = r->coords.rank; \
+    int64_t numel = r->numel; \
+    if (mag_unlikely(!numel)) return; \
+    if (rank == 0) { \
+      if (payload->thread_idx == 0) *br = ONE; \
+      return; \
+    } \
+    int64_t last_dim = r->coords.shape[rank - 1]; \
+    int64_t rows = numel / last_dim; \
+    int64_t tc = payload->thread_num; \
+    int64_t ti = payload->thread_idx; \
+    int64_t rpt = (rows + tc - 1) / tc; \
+    int64_t ra = ti * rpt; \
+    int64_t rb = mag_xmin(ra + rpt, rows); \
+    for (int64_t ri = ra; ri < rb; ++ri) { \
+      const T *row_in = bx + ri * last_dim; \
+      T *row_out = br + ri * last_dim; \
+      int64_t i=0; \
+      mag_vf32_t vmax = mag_vf32_splat(-INFINITY); \
+      for (; i+MAG_VF32_LANES <= last_dim; i += MAG_VF32_LANES) { \
+        vmax = mag_vf32_max(vmax, LOAD(row_in + i)); \
+      } \
+      float max_val = mag_vf32_reduce_max(vmax); \
+      for (; i < last_dim; ++i) { \
+        max_val = mag_xmax(max_val, TO_F32(row_in[i])); \
+      } \
+      i=0; \
+      mag_vf32_t vsum = mag_vf32_zero(); \
+      mag_vf32_t vm = mag_vf32_splat(max_val); \
+      for (; i+MAG_VF32_LANES <= last_dim; i += MAG_VF32_LANES) { \
+        mag_vf32_t v = LOAD(row_in + i); \
+        v = mag_vf32_exp(mag_vf32_sub(v, vm)); \
+        STORE(row_out + i, v); \
+        vsum = mag_vf32_add(vsum, v); \
+      } \
+      float sum = mag_vf32_reduce_add(vsum); \
+      for (; i < last_dim; ++i) { \
+        float v = expf(TO_F32(row_in[i]) - max_val); \
+        row_out[i] = FROM_F32(v); \
+        sum += v; \
+      } \
+      if (!isfinite(sum) || sum <= 0.0f) { \
+        T inv = FROM_F32(1.0f / (float)last_dim); \
+        for (i=0; i < last_dim; ++i) row_out[i] = inv; \
+      } else { \
+        float inv = 1.0f / sum; \
+        mag_vf32_t vinv = mag_vf32_splat(inv); \
+        for (i=0; i+MAG_VF32_LANES <= last_dim; i += MAG_VF32_LANES) { \
+          mag_vf32_t v = LOAD(row_out + i); \
+          STORE(row_out + i, mag_vf32_mul(v, vinv)); \
+        } \
+        for (; i < last_dim; ++i) { \
+          row_out[i] = FROM_F32(TO_F32(row_out[i]) * inv); \
+        } \
+      } \
+    } \
   }
-  int64_t last_dim = r->coords.shape[rank-1];
-  int64_t rows = r->numel / last_dim;
-  int64_t tc = payload->thread_num;
-  int64_t ti = payload->thread_idx;
-  int64_t rpt = (rows + tc - 1)/tc;
-  int64_t ra = ti*rpt;
-  int64_t rb = mag_xmin(ra + rpt, rows);
-  for (int64_t ri=ra; ri < rb; ++ri) {
-    const float *row_in = bx + ri*last_dim;
-    mag_bnd_chk(row_in, bx, mag_tensor_numbytes(x));
-    float *row_out = br + ri*last_dim;
-    float max_val = row_in[0]; /* Max val is computed for numerical stability */
-    for (int64_t i=1; i < last_dim; ++i) {
-      if (row_in[i] > max_val) {
-        mag_bnd_chk(row_in+i, bx, mag_tensor_numbytes(x));
-        max_val = row_in[i];
-      }
-    }
-    double sum = 0.0f;
-    for (int64_t i=0; i < last_dim; ++i) {
-      mag_bnd_chk(row_in+i, bx, mag_tensor_numbytes(x));
-      mag_bnd_chk(row_out+i, br, mag_tensor_numbytes(r));
-      row_out[i] = expf(row_in[i] - max_val); /* -max for numerical stability */
-      sum += row_out[i];
-    }
-    if (!isfinite(sum) || sum <= 0.0) {
-      float inv = 1.0f / (float)last_dim;
-      for (int64_t i=0; i < last_dim; ++i) row_out[i] = inv;
-    } else {
-      float inv = (float)(1.0 / sum);
-      for (int64_t i=0; i < last_dim; ++i) row_out[i] *= inv;
-    }
-  }
-}
 
-static void MAG_HOTPROC mag_softmax_float16(const mag_kernel_payload_t *payload) {
-  mag_tensor_t *r = mag_cmd_out(0);
-  const mag_tensor_t *x = mag_cmd_in(0);
-  mag_assert(mag_tensor_is_contiguous(x), "Softmax input tensor must be contiguous");
-  mag_float16_t *br = (mag_float16_t *)mag_tensor_data_ptr_mut(r);
-  const mag_float16_t *bx = (const mag_float16_t *)mag_tensor_data_ptr(x);
-  int64_t rank  = r->coords.rank;
-  int64_t numel = r->numel;
-  if (mag_unlikely(!numel)) return;
-  if (rank == 0) {
-    if (payload->thread_idx == 0) *br = MAG_FLOAT16_ONE;
-    return;
-  }
-  int64_t last_dim = r->coords.shape[r->coords.rank-1];
-  int64_t rows = r->numel / last_dim;
-  int64_t tc = payload->thread_num;
-  int64_t ti = payload->thread_idx;
-  int64_t rpt = (rows + tc - 1)/tc;
-  int64_t ra = ti*rpt;
-  int64_t rb = mag_xmin(ra + rpt, rows);
-  for (int64_t ri=ra; ri < rb; ++ri) {
-    const mag_float16_t *row_in = bx + ri*last_dim;
-    mag_bnd_chk(row_in, bx, mag_tensor_numbytes(x));
-    mag_float16_t *row_out = br + ri*last_dim;
-    float max_val = mag_float16_to_float32(row_in[0]); /* Max val is computed for numerical stability */
-    for (int64_t i=1; i < last_dim; ++i) {
-      if (mag_float16_to_float32(row_in[i]) > max_val) {
-        mag_bnd_chk(row_in+i, bx, mag_tensor_numbytes(x));
-        max_val = mag_float16_to_float32(row_in[i]);
-      }
-    }
-    double sum = 0.0f;
-    for (int64_t i=0; i < last_dim; ++i) {
-      mag_bnd_chk(row_in+i, bx, mag_tensor_numbytes(x));
-      mag_bnd_chk(row_out+i, br, mag_tensor_numbytes(r));
-      float ro = expf(mag_float16_to_float32(row_in[i]) - max_val);
-      row_out[i] = mag_float32_to_float16(ro); /* -max for numerical stability */
-      sum += ro;
-    }
-    if (!isfinite(sum) || sum <= 0.0) {
-      mag_float16_t inv = mag_float32_to_float16(1.0f / (float)last_dim);
-      for (int64_t i=0; i < last_dim; ++i) row_out[i] = inv;
-    } else {
-      float inv = (float)(1.0 / sum);
-      for (int64_t i=0; i < last_dim; ++i) row_out[i] = mag_float32_to_float16(mag_float16_to_float32(row_out[i]) * inv);
-    }
-  }
-}
+#define mag_f32_id(x) (x)
 
-static void MAG_HOTPROC mag_softmax_bfloat16(const mag_kernel_payload_t *payload) {
-  mag_tensor_t *r = mag_cmd_out(0);
-  const mag_tensor_t *x = mag_cmd_in(0);
-  mag_assert(mag_tensor_is_contiguous(x), "Softmax input tensor must be contiguous");
-  mag_bfloat16_t *br = (mag_bfloat16_t *)mag_tensor_data_ptr_mut(r);
-  const mag_bfloat16_t *bx = (const mag_bfloat16_t *)mag_tensor_data_ptr(x);
-  int64_t rank  = r->coords.rank;
-  int64_t numel = r->numel;
-  if (mag_unlikely(!numel)) return;
-  if (rank == 0) {
-    if (payload->thread_idx == 0) *br = MAG_BFLOAT16_ONE;
-    return;
-  }
-  int64_t last_dim = r->coords.shape[r->coords.rank-1];
-  int64_t rows = r->numel / last_dim;
-  int64_t tc = payload->thread_num;
-  int64_t ti = payload->thread_idx;
-  int64_t rpt = (rows + tc - 1)/tc;
-  int64_t ra = ti*rpt;
-  int64_t rb = mag_xmin(ra + rpt, rows);
-  for (int64_t ri=ra; ri < rb; ++ri) {
-    const mag_bfloat16_t *row_in = bx + ri*last_dim;
-    mag_bnd_chk(row_in, bx, mag_tensor_numbytes(x));
-    mag_bfloat16_t *row_out = br + ri*last_dim;
-    float max_val = mag_bfloat16_to_float32(row_in[0]); /* Max val is computed for numerical stability */
-    for (int64_t i=1; i < last_dim; ++i) {
-      if (mag_bfloat16_to_float32(row_in[i]) > max_val) {
-        mag_bnd_chk(row_in+i, bx, mag_tensor_numbytes(x));
-        max_val = mag_bfloat16_to_float32(row_in[i]);
-      }
-    }
-    double sum = 0.0f;
-    for (int64_t i=0; i < last_dim; ++i) {
-      mag_bnd_chk(row_in+i, bx, mag_tensor_numbytes(x));
-      mag_bnd_chk(row_out+i, br, mag_tensor_numbytes(r));
-      float ro = expf(mag_bfloat16_to_float32(row_in[i]) - max_val);
-      row_out[i] = mag_float32_to_bfloat16(ro); /* -max for numerical stability */
-      sum += ro;
-    }
-    if (!isfinite(sum) || sum <= 0.0) {
-      mag_bfloat16_t inv = mag_float32_to_bfloat16(1.0f / (float)last_dim);
-      for (int64_t i=0; i < last_dim; ++i) row_out[i] = inv;
-    } else {
-      float inv = (float)(1.0 / sum);
-      for (int64_t i=0; i < last_dim; ++i) row_out[i] = mag_float32_to_bfloat16(mag_bfloat16_to_float32(row_out[i]) * inv);
-    }
-  }
-}
+mag_gen_softmax_simd(
+  float,
+  float32,
+  1.0f,
+  mag_vf32_loadu_f32,
+  mag_vf32_storeu_f32,
+  mag_f32_id,
+  mag_f32_id
+)
+
+mag_gen_softmax_simd(
+  mag_float16_t,
+  float16,
+  MAG_FLOAT16_ONE,
+  mag_vf32_loadu_f16,
+  mag_vf32_storeu_f16,
+  mag_float16_to_float32,
+  mag_float32_to_float16
+)
+
+mag_gen_softmax_simd(
+  mag_bfloat16_t,
+  bfloat16,
+  MAG_BFLOAT16_ONE,
+  mag_vf32_loadu_bf16,
+  mag_vf32_storeu_bf16,
+  mag_bfloat16_to_float32,
+  mag_float32_to_bfloat16
+)
+
+#undef mag_f32_id
+#undef mag_gen_softmax_simd
