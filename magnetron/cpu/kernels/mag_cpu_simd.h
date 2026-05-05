@@ -1032,17 +1032,17 @@ static MAG_AINLINE mag_vf32_t mag_vf32_loadu_bf16(const mag_bfloat16_t *p) {
   #elif defined(__loongarch_asx)
   uint64_t q0, q1;
 
-  memcpy(&q0, (const char *)p + 0, 8);
+  memcpy(&q0, (const char *)p + 0, 8);  // bf16[0..3]
 
-  memcpy(&q1, (const char *)p + 8, 8);
+  memcpy(&q1, (const char *)p + 8, 8);  // bf16[4..7]
 
   __m256i h = __lasx_xvldi(0);
 
   __asm__ volatile (
 
-    "xvinsgr2vr.d %u[h], %[q0], 0\n\t"
+    "xvinsgr2vr.d %u[h], %[q0], 0\n\t"  // low 128 lane
 
-    "xvinsgr2vr.d %u[h], %[q1], 1\n\t"
+    "xvinsgr2vr.d %u[h], %[q1], 2\n\t"  // high 128 lane, NOT 1
 
     : [h] "+f" (h)
 
@@ -1055,8 +1055,6 @@ static MAG_AINLINE mag_vf32_t mag_vf32_loadu_bf16(const mag_bfloat16_t *p) {
   __m256i u = __lasx_xvilvl_h(z, h);
 
   u = __lasx_xvslli_w(u, 16);
-
-  return (__m256)u;
 
   return (__m256)u;
   #elif defined(__loongarch_sx)
