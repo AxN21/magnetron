@@ -1030,25 +1030,33 @@ static MAG_AINLINE mag_vf32_t mag_vf32_loadu_bf16(const mag_bfloat16_t *p) {
     u = _mm_slli_epi32(u, 16);
     return _mm_castsi128_ps(u);
   #elif defined(__loongarch_asx)
-  __m128i h128 = __lsx_vld((const void *)p, 0); // 8 bf16 = 128-bit load
+  uint64_t q0, q1;
 
-  union {
+  memcpy(&q0, (const char *)p + 0, 8);
 
-    __m256i x;
+  memcpy(&q1, (const char *)p + 8, 8);
 
-    __m128i v[2];
+  __m256i h = __lasx_xvldi(0);
 
-  } h;
+  __asm__ volatile (
 
-  h.v[0] = h128;
+    "xvinsgr2vr.d %u[h], %[q0], 0\n\t"
 
-  h.v[1] = __lsx_vldi(0);
+    "xvinsgr2vr.d %u[h], %[q1], 1\n\t"
+
+    : [h] "+f" (h)
+
+    : [q0] "r" (q0), [q1] "r" (q1)
+
+  );
 
   __m256i z = __lasx_xvldi(0);
 
-  __m256i u = __lasx_xvilvl_h(z, h.x);
+  __m256i u = __lasx_xvilvl_h(z, h);
 
   u = __lasx_xvslli_w(u, 16);
+
+  return (__m256)u;
 
   return (__m256)u;
   #elif defined(__loongarch_sx)
@@ -1099,17 +1107,23 @@ static MAG_AINLINE void mag_vf32_storeu_bf16(mag_bfloat16_t *p, mag_vf32_t v) {
 
   __m256i h = __lasx_xvpickev_h(u, u);
 
-  union {
+  uint64_t q0, q1;
 
-    __m256i x;
+  __asm__ volatile (
 
-    __m128i v[2];
+    "xvpickve2gr.d %[q0], %u[h], 0\n\t"
 
-  } out;
+    "xvpickve2gr.d %[q1], %u[h], 2\n\t"
 
-  out.x = h;
+    : [q0] "=r" (q0), [q1] "=r" (q1)
 
-  __lsx_vst(out.v[0], (void *)p, 0);
+    : [h] "f" (h)
+
+  );
+
+  memcpy((char *)p + 0, &q0, 8);
+
+  memcpy((char *)p + 8, &q1, 8);
   #elif defined(__loongarch_sx)
     mag_alignas(16) float tmp[4];
     __lsx_vst((__m128i)v, tmp, 0);
