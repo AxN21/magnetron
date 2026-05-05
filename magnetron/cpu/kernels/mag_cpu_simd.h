@@ -1030,19 +1030,25 @@ static MAG_AINLINE mag_vf32_t mag_vf32_loadu_bf16(const mag_bfloat16_t *p) {
     u = _mm_slli_epi32(u, 16);
     return _mm_castsi128_ps(u);
   #elif defined(__loongarch_asx)
-  uint64_t lo0, lo1;
+  __m128i h128 = __lsx_vld((const void *)p, 0); // 8 bf16 = 128-bit load
 
-  memcpy(&lo0, (const uint8_t *)p + 0, 8);
+  union {
 
-  memcpy(&lo1, (const uint8_t *)p + 8, 8);
+    __m256i x;
 
-  __m256i h = (__m256i){ (long long)lo0, (long long)lo1, 0, 0 };
+    __m128i v[2];
+
+  } h;
+
+  h.v[0] = h128;
+
+  h.v[1] = __lsx_vldi(0);
 
   __m256i z = __lasx_xvldi(0);
 
-  __m256i u = __lasx_xvilvl_h(z, h);   // 8x u16 -> 8x u32
+  __m256i u = __lasx_xvilvl_h(z, h.x);
 
-  u = __lasx_xvslli_w(u, 16);          // bf16 bits -> fp32 bits
+  u = __lasx_xvslli_w(u, 16);
 
   return (__m256)u;
   #elif defined(__loongarch_sx)
@@ -1089,23 +1095,21 @@ static MAG_AINLINE void mag_vf32_storeu_bf16(mag_bfloat16_t *p, mag_vf32_t v) {
   #elif defined(__loongarch_asx)
   __m256i u = (__m256i)v;
 
-  u = __lasx_xvsrli_w(u, 16);          // fp32 bits -> bf16 in low u16
+  u = __lasx_xvsrli_w(u, 16);
 
-  __m256i h = __lasx_xvpickev_h(u, u); // pack bf16 halfwords
+  __m256i h = __lasx_xvpickev_h(u, u);
 
   union {
 
-    __m256i v;
+    __m256i x;
 
-    uint64_t q[4];
+    __m128i v[2];
 
   } out;
 
-  out.v = h;
+  out.x = h;
 
-  memcpy((uint8_t *)p + 0, &out.q[0], 8);
-
-  memcpy((uint8_t *)p + 8, &out.q[1], 8);
+  __lsx_vst(out.v[0], (void *)p, 0);
   #elif defined(__loongarch_sx)
     mag_alignas(16) float tmp[4];
     __lsx_vst((__m128i)v, tmp, 0);
