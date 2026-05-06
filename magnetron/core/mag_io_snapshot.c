@@ -19,24 +19,6 @@
 #include "mag_context.h"
 #include "../cpu/mag_cpu.h"
 
-
-/*
-** File Format:
-** ================= Full File Overview =================
-**
-** +----------------------+ <- Magic: "MAG!"
-** | File Header          |
-** +----------------------+ <- Section Marker: "SRP!"
-** | String Pool          |
-** +----------------------+ <- Section Marker: "MDT!
-** | Metadata Map         |
-** +----------------------+ <- Section Marker: "DSC!"
-** | Tensor Header Map    |
-** +----------------------+ <- Section Marker: "BUF!"
-** | Tensor Data          |
-** +----------------------+
-*/
-
 #define mag_snap_verify(expr, action) \
 if (mag_unlikely(!(expr))) { \
   mag_log_error("Error reading/writing snapshot file: " #expr); \
@@ -56,7 +38,10 @@ if (mag_unlikely(!(expr))) { \
 #define MAG_SNAP_SECTION_TENSOR_DESC mag_snap_pack4_ne('D', 'S', 'C', '!')
 #define MAG_SNAP_SECTION_TENSOR_DATA mag_snap_pack4_ne('B', 'U', 'F', '!')
 #define MAG_SNAP_SECTION_MARKERS_COUNT 4 /* File magic is not included, belongs to file header */
-#define MAG_SNAP_TBUF_ALIGN 16 /* Every tensor buffer start address must be aligned to this */
+#define MAG_SNAP_TBUF_ALIGN MAG_CPU_BUF_ALIGN /* Every tensor buffer start address must be aligned to this */
+mag_static_assert(MAG_SNAP_TBUF_ALIGN == 16);
+
+#define mag_snap_alignup(x, al) (((x)+(al)-1)&~((al)-1))
 
 #ifdef MAG_BIG_ENDIAN
 /*
@@ -222,11 +207,21 @@ static bool mag_stream_wbytes(mag_mem_stream_t *stream, const void *buf, size_t 
   return true;
 }
 
-static bool mag_stream_rbytes_view(mag_mem_stream_t *s, const uint8_t **out, size_t len) {
+static bool mag_stream_rbytes_view(mag_mem_stream_t *stream, const uint8_t **out, size_t len) {
   mag_snap_verify(out != NULL, return false);
-  mag_snap_verify((size_t)(s->end - s->pos) >= len, return false);
-  *out = s->pos;
-  s->pos += len;
+  mag_snap_verify((size_t)(stream->end - stream->pos) >= len, return false);
+  *out = stream->pos;
+  stream->pos += len;
+  return true;
+}
+
+static bool mag_stream_wzeros(mag_mem_stream_t *stream, size_t n) {
+  static const uint8_t z[MAG_SNAP_TBUF_ALIGN] = {0};
+  while (n) {
+    size_t k = n < sizeof(z) ? n : sizeof(z);
+    mag_snap_verify(mag_stream_wbytes(stream, z, k), return false);
+    n -= k;
+  }
   return true;
 }
 
@@ -321,16 +316,17 @@ static bool mag_tensor_desc_deserialize(mag_tensor_desc_t *desc, mag_mem_stream_
   mag_snap_verify(desc->key_id < pool_len, return false);
   mag_snap_verify(mag_stream_ru64_le(stream, &desc->numel), return false);
   mag_snap_verify(desc->numel > 0 && desc->numel <= INT64_MAX, return false);
-  mag_snap_verify(mag_stream_ru64_le(stream, &desc->offset), return false);     /* TODO: verify offset */
-  int64_t numel_prod = 1;
+  mag_snap_verify(mag_stream_ru64_le(stream, &desc->offset), return false);
+  mag_snap_verify(!(desc->offset&(MAG_CPU_BUF_ALIGN-1)), return false);
+  int64_t prod = 1;
   for (uint8_t i=0; i < desc->rank; ++i) {
     uint64_t dim=0;
     mag_snap_verify(mag_stream_ru64_le(stream, &dim), return false);
     mag_snap_verify(dim <= INT64_MAX, return false);
-    mag_snap_verify(!mag_mulov64(dim, numel_prod, &numel_prod), return false);
+    mag_snap_verify(!mag_mulov64(dim, prod, &prod), return false);
     desc->shape[i] = dim;
   }
-  mag_snap_verify(numel_prod <= INT64_MAX && numel_prod == desc->numel, return false);
+  mag_snap_verify(prod <= INT64_MAX && prod == desc->numel, return false);
   return true;
 }
 
@@ -468,24 +464,40 @@ struct mag_snapshot_t {
   size_t nb_storage;
 };
 
-static size_t mag_snaprage_compute_tensor_sizes(mag_map_t *tmap) {
+static size_t mag_snap_compute_tensor_desc_size(mag_map_t *tmap) {
   size_t nb = 0, iter = 0, len = 0;
   void *val = NULL;
-  while (mag_map_next(tmap, &iter, &len, &val)) {  /* Tensors */
+  while (mag_map_next(tmap, &iter, &len, &val)) {
     mag_tensor_t *tensor = val;
     nb += MAG_TENSOR_DESC_SIZE(tensor->coords.rank);
+  }
+  return nb;
+}
+
+static size_t mag_snap_compute_tensor_data_size(mag_map_t *tmap) {
+  size_t nb = 0, iter = 0, len = 0;
+  void *val = NULL;
+  size_t al = MAG_SNAP_TBUF_ALIGN-1;
+  while (mag_map_next(tmap, &iter, &len, &val)) {
+    mag_tensor_t *tensor = val;
+    nb = nb+al&~al;
     nb += mag_tensor_numbytes(tensor);
   }
   return nb;
 }
 
-static size_t mag_snaprage_compute_size(mag_snapshot_t *snap) {
-  size_t nb = 0;
-  nb += MAG_FILE_HEADER_SIZE; /* File Header */
-  nb += 4*MAG_SNAP_SECTION_MARKERS_COUNT; /* Markers */
-  nb += mag_pool_compute_size(&snap->str_pool);
-  nb += mag_snaprage_compute_tensor_sizes(&snap->tensor_map);
-  return nb;
+static size_t mag_snap_compute_size(mag_snapshot_t *snap) {
+  size_t meta = 0;
+  meta += MAG_FILE_HEADER_SIZE;
+  meta += 4; /* SRP! */
+  meta += mag_pool_compute_size(&snap->str_pool);
+  meta += 4; /* MDT! */
+  meta += 4; /* DSC! */
+  meta += mag_snap_compute_tensor_desc_size(&snap->tensor_map);
+  meta += 4; /* BUF! */
+  size_t al = MAG_SNAP_TBUF_ALIGN-1;
+  size_t db_pad = (meta+al&~al) - meta;
+  return meta+db_pad+mag_snap_compute_tensor_data_size(&snap->tensor_map);
 }
 
 mag_snapshot_t *mag_snapshot_new(mag_context_t *ctx) {
@@ -568,36 +580,43 @@ mag_snapshot_t *mag_snapshot_deserialize(mag_context_t *ctx, const char *filenam
   /* Read data */
   mag_snap_verify(mag_stream_ru32_le(stream, &section_marker), goto error);
   mag_snap_verify(section_marker == MAG_SNAP_SECTION_TENSOR_DATA, goto error);
-
+  size_t db = mag_stream_needle(stream);
+  size_t al = MAG_SNAP_TBUF_ALIGN-1;
+  size_t db_al = (db+al)&~al;
+  const uint8_t *ignored = NULL;
+  mag_snap_verify(mag_stream_rbytes_view(stream, &ignored, db_al - db), goto error);
   snap->nb_meta = mag_stream_needle(stream); /* Everything up to here is metadata */
-
   mag_device_t *cpu_device=NULL;
   mag_snap_verify(mag_backend_registry_get_backend_and_device_by_id(snap->ctx->backend_registry, mag_device(CPU, 0), NULL, &cpu_device), goto error);
 
-  uint64_t offs=0;
+  uint64_t offset=0;
   for (size_t i=0; i < nt; ++i) {
     const mag_tensor_desc_t *desc = stable+i;
-    uint64_t offset = desc->offset;
+    uint64_t delta = desc->offset;
+    size_t elsize = mag_type_trait(desc->dtype)->size;
+    int64_t numel = desc->numel;
     int64_t shape[MAG_SNAP_MAX_RANK];
-    for (uint8_t j=0; j < desc->rank && j < sizeof(shape)/sizeof(*shape); ++j)
-      shape[j] = (int64_t)desc->shape[j];
-    size_t nbytes = (size_t)desc->numel*(size_t)mag_type_trait(desc->dtype)->size;
-    mag_snap_verify(offset == offs, goto error); /* Verify offset */
+    for (uint8_t j=0; j < desc->rank && j < sizeof(shape)/sizeof(*shape); ++j) shape[j] = (int64_t)desc->shape[j];
+    size_t nb = numel*elsize;
     const uint8_t *blob = NULL;
-    mag_snap_verify(mag_stream_rbytes_view(stream, &blob, nbytes), goto error);
+    mag_assert2(((int64_t)delta-(int64_t)offset)>=0);
+    uint64_t pad = delta-offset;
+    ignored = NULL;
+    mag_snap_verify(mag_stream_rbytes_view(stream, &ignored, pad), goto error);
+    offset = delta;
+    mag_snap_verify(mag_stream_rbytes_view(stream, &blob, nb), goto error);
+    mag_snap_verify(!(al&(uintptr_t)blob), goto error); /* Check alignment */
     mag_error_t berr = {0};
     mag_tensor_t *tensor = NULL;
-    if (mag_iserr(mag_borrow_cpu_buffer( &berr, &tensor, ctx, (void *)blob, nbytes, desc->dtype, desc->rank, shape, false, &mag_snapshot_mmap_borrow_release, snap->mmap_owner)))
+    if (mag_iserr(mag_borrow_cpu_buffer(&berr, &tensor, ctx, (void *)blob, nb, desc->dtype, desc->rank, shape, false, &mag_snapshot_mmap_borrow_release, snap->mmap_owner)))
       goto error;
     mag_rc_incref(snap->mmap_owner);
     mag_snap_verify(mag_snapshot_insert_tensor_by_id(snap, desc->key_id, tensor), mag_tensor_decref(tensor); goto error);
     mag_tensor_decref(tensor); /* Decref as the snapshot now holds a reference */
-    offs += nbytes;
+    offset += nb;
   }
-
   snap->nb_storage = mag_stream_needle(stream) - snap->nb_meta;
   mag_snap_verify(snap->nb_total == snap->nb_meta + snap->nb_storage, goto error);
-
   (*mag_alloc)(stable, 0, 0);
   return snap;
   error:
@@ -613,7 +632,7 @@ bool mag_snapshot_serialize(mag_snapshot_t *snap, const char *filename) {
   mag_snap_verify(snap->tensor_map.nitems <= UINT32_MAX, return false);
   mag_mem_stream_t stream = {0};
   mag_mapped_file_t map = {0};
-  mag_snap_verify(mag_stream_mmap_file_w(&stream, &map, filename, mag_snaprage_compute_size(snap)), return false);
+  mag_snap_verify(mag_stream_mmap_file_w(&stream, &map, filename, mag_snap_compute_size(snap)), return false);
   mag_file_header_t header = (mag_file_header_t) {
     .magic = MAG_SNAP_FILE_MAGIC,
     .version = MAG_SNAPSHOT_VERSION,
@@ -650,6 +669,7 @@ bool mag_snapshot_serialize(mag_snapshot_t *snap, const char *filename) {
   for (k=0; k < snap->tensor_map.nitems && (key = mag_map_next(&snap->tensor_map, &iter, &klen, &val)); ++k) {  /* Tensor descriptors */
     mag_assert2(klen == sizeof(uint32_t));
     uint32_t key_id = *(const uint32_t *)key;
+    offs = mag_snap_alignup(offs, MAG_SNAP_TBUF_ALIGN);
     mag_tensor_t *tensor = val;
     mag_tensor_desc_t desc = {
       .rank = tensor->coords.rank,
@@ -692,20 +712,27 @@ bool mag_snapshot_serialize(mag_snapshot_t *snap, const char *filename) {
   memcpy(u32_chk_patch_needle, &crc32c, sizeof(crc32c));
 
   /* Tensor data section */
-  marker = mag_stream_needle(&stream);
   mag_snap_verify(mag_stream_wu32_le(&stream, MAG_SNAP_SECTION_TENSOR_DATA), goto error); /* Data section marker */
-  size_t nb_dat_total = 0;
+  size_t db = mag_stream_needle(&stream);
+  size_t align = MAG_SNAP_TBUF_ALIGN-1;
+  size_t db_al = (db+align)&~align;
+  mag_snap_verify(mag_stream_wzeros(&stream, db_al-db), goto error);
+  marker = db_al;
+  size_t data_offs = 0;
   for (size_t i=0; i < snap->tensor_map.nitems; ++i) { /* Tensor data */
     mag_tensor_t *tensor = stable[i];
+    size_t al = data_offs+align&~align;
+    mag_snap_verify(mag_stream_wzeros(&stream, al-data_offs), goto error);
+    data_offs = al;
     mag_snap_verify(tensor->storage->device->id.type == MAG_BACKEND_TYPE_CPU, goto error); /* Tensor must live on CPU */
     mag_error_t err = {0};
     mag_snap_verify(mag_isok(mag_contiguous(&err, &tensor, tensor)), goto error); /* TODO: Migrate to new error system Make contiguous to allow the 1:1 copy into mmap destination region */
     size_t nb = mag_tensor_numbytes(tensor);
-    nb_dat_total += nb;
+    data_offs += nb;
     mag_snap_verify(mag_stream_wbytes(&stream, (const void *)mag_tensor_data_ptr(tensor), nb), mag_tensor_decref(tensor); goto error);
     mag_tensor_decref(tensor);
   }
-  mag_assert2(mag_stream_needle(&stream)-marker == 4+nb_dat_total); /* Data section marker + total bytes */
+  mag_assert2(mag_stream_needle(&stream)-marker == data_offs); /* total bytes */
   mag_assert2(mag_stream_needle(&stream) == stream.end-stream.base); /* All pre-estimated bytes must be written, down to the last crumb of cookie */
   mag_stream_close(&stream);
   mag_unmap_file(&map);

@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from magnetron import Tensor, context
 from rich.console import Console
 from tokenizers import Tokenizer
+from torch.utils.data.datapipes.utils import snapshot
 
 from model import build_prompt, Qwen3Model, dtype
 
@@ -81,6 +82,7 @@ class InferenceConfig:
     temp: float = 0.6
     top_k: int = 200
     seed: int = 3407
+    snapshot: str | None = None
 
     @classmethod
     def from_args(cls, args: argparse.Namespace) -> 'InferenceConfig':
@@ -93,16 +95,19 @@ class InferenceConfig:
             temp=args.temp,
             top_k=args.top_k,
             seed=args.seed,
+            snapshot=args.snapshot
         )
 
 
 class InferenceEngine:
-    def __init__(self, config: InferenceConfig, snapshot: str | None = None) -> None:
+    def __init__(self, config: InferenceConfig) -> None:
+        snapshot: str | None = config.snapshot
         if snapshot is None:
             snapshot = _download_or_ensure_hf_file(
                 repo_id=REPO_ID,
                 filename='qwen3-4b-instruct-2507-bfloat16.mag',
             )
+        assert snapshot is not None
         start = time.perf_counter()
         context.stop_grad_recorder()
         context.manual_seed(config.seed)
