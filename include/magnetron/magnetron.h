@@ -74,6 +74,8 @@ extern MAG_EXPORT mag_log_level_t mag_log_level(void); /* Get current global log
     _(MAG_STATUS_ERR_MEMORY_ALLOCATION_FAILED, "Memory allocation failed") \
     _(MAG_STATUS_ERR_MEMORY_DEALLOCATION_FAILED, "Memory deallocation failed") \
     _(MAG_STATUS_ERR_FAILED_TO_MAP_FILE, "Failed to memory map file") \
+    _(MAG_STATUS_ERR_STREAM_IO_ERROR, "Stream IO processing error") \
+    _(MAG_STATUS_ERR_SERIALIZATION_ERROR, "De/serialization error") \
     _(MAG_STATUS_ERR_UNKNOWN, "Unknown error")
 
 typedef enum mag_status_t {
@@ -472,9 +474,9 @@ typedef struct mag_snapshot_t mag_snapshot_t;
 
 /* TODO: Migrate to new error system */
 
-extern MAG_EXPORT mag_status_t mag_snapshot_new(mag_snapshot_t **out_snap, mag_context_t *ctx);
-extern MAG_EXPORT mag_status_t mag_snapshot_deserialize(mag_snapshot_t **out_snap, mag_context_t *ctx, const char *filename);
-extern MAG_EXPORT mag_status_t mag_snapshot_serialize(mag_snapshot_t *snap, const char *filename);
+extern MAG_EXPORT mag_status_t mag_snapshot_new(mag_error_t *err, mag_snapshot_t **out_snap, mag_context_t *ctx);
+extern MAG_EXPORT mag_status_t mag_snapshot_deserialize(mag_error_t *err, mag_snapshot_t **out_snap, mag_context_t *ctx, const char *filename);
+extern MAG_EXPORT mag_status_t mag_snapshot_serialize(mag_error_t *err, mag_snapshot_t *snap, const char *filename);
 
 extern MAG_EXPORT mag_tensor_t *mag_snapshot_get_tensor(mag_snapshot_t *snap, const char *key);
 extern MAG_EXPORT bool mag_snapshot_put_tensor(mag_snapshot_t *snap, const char *key, mag_tensor_t *tensor);

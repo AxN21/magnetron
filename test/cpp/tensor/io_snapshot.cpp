@@ -35,16 +35,20 @@ TEST(snapshot, read_write_tensors) {
         }
     }
     { // write
-        mag_snapshot_t *snap = mag_snapshot_new(&*ctx);
+        mag_snapshot_t *snap = nullptr;
+        ASSERT_TRUE(mag_isok(mag_snapshot_new(nullptr, &snap, &*ctx)));
         ASSERT_NE(snap, nullptr);
         test::scope_guard sg {[&] { mag_snapshot_free(snap); }};
         for (auto&& [name, t] : tensors)
             ASSERT_TRUE(mag_snapshot_put_tensor(snap, name.c_str(), &*t));
-        ASSERT_TRUE(mag_snapshot_serialize(snap, "snap.mag"));
+        mag_error_t err {};
+        ASSERT_EQ(mag_snapshot_serialize(&err, snap, "snap.mag"), MAG_STATUS_OK) << err.message;
     }
     ASSERT_TRUE(std::filesystem::exists("snap.mag"));
     { // read
-        mag_snapshot_t *snap = mag_snapshot_deserialize(&*ctx, "snap.mag");
+        mag_snapshot_t *snap = nullptr;
+        mag_error_t err {};
+        ASSERT_TRUE(mag_isok(mag_snapshot_deserialize(&err, &snap, &*ctx, "snap.mag"))) << err.message;
         ASSERT_NE(snap, nullptr);
         test::scope_guard sg {[&] { mag_snapshot_free(snap); }};
         {

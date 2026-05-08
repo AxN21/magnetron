@@ -20,48 +20,42 @@ namespace mag::bindings {
   public:
     snapshot_wrapper(const std::string &fname, bool write) : write_mode(write), filename(fname) {
       mag_context_t *ctx = get_ctx();
-      p = write ? mag_snapshot_new(ctx) : mag_snapshot_deserialize(ctx, fname.c_str());
-      if (!p) {
-        std::ostringstream oss;
-        oss << "Failed to create or load snapshot: " << fname;
-        throw std::runtime_error(oss.str());
-      }
+      mag_error_t err {};
+      if (write) throw_if_error(mag_snapshot_new(&err, &snap_ptr, ctx), err);
+      else throw_if_error(mag_snapshot_deserialize(&err, &snap_ptr, ctx, filename.c_str()), err);
     }
     ~snapshot_wrapper() {
-      if (p) mag_snapshot_free(p);
+      if (snap_ptr) mag_snapshot_free(snap_ptr);
     }
     snapshot_wrapper(const snapshot_wrapper&) = delete;
     snapshot_wrapper& operator=(const snapshot_wrapper&) = delete;
     snapshot_wrapper(snapshot_wrapper&& o) noexcept {
-      p = o.p;
+      snap_ptr = o.snap_ptr;
       write_mode = o.write_mode;
       filename = std::move(o.filename);
-      o.p = nullptr;
+      o.snap_ptr = nullptr;
     }
-    mag_snapshot_t *operator *() const noexcept { return p; }
-    operator bool () const noexcept { return p != nullptr; }
+    mag_snapshot_t *operator *() const noexcept { return snap_ptr; }
+    operator bool () const noexcept { return snap_ptr != nullptr; }
     [[nodiscard]] bool is_write_mode() const noexcept { return write_mode; }
 
     void serialize_if_needed() {
-      if (write_mode && p) {
-        if (!mag_snapshot_serialize(p, filename.c_str())) {
-          std::ostringstream oss;
-          oss << "Failed to serialize snapshot: " << filename;
-          throw std::runtime_error(oss.str());
-        }
+      if (write_mode && snap_ptr) {
+        mag_error_t err {};
+        throw_if_error(mag_snapshot_serialize(&err, snap_ptr, filename.c_str()), err);
       }
     }
 
     void close() {
-      if (p) {
+      if (snap_ptr) {
         if (write_mode) serialize_if_needed();
-        mag_snapshot_free(p);
-        p = nullptr;
+        mag_snapshot_free(snap_ptr);
+        snap_ptr = nullptr;
       }
     }
 
   private:
-    mag_snapshot_t *p = nullptr;
+    mag_snapshot_t *snap_ptr = nullptr;
     bool write_mode = false;
     std::string filename = {};
   };
