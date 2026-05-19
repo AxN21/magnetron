@@ -11,12 +11,16 @@ import gc
 import math
 from collections.abc import Iterator
 from typing import Any
-
+from enum import Enum, unique
 from magnetron import Tensor, Snapshot, nn, dtype, context
 from dataclasses import dataclass
 
 _EOS: set[int] = {151645, 151643}
 
+@unique
+class SamplingStrategy(Enum):
+    GREEDY = 'greedy'
+    TOPK = 'topk'
 
 @dataclass
 class Qwen3HyperParams:
@@ -34,6 +38,7 @@ class Qwen3HyperParams:
     sliding_window: int | None = None
     bos_token_id: int = 151643
     eos_token_id: int = 151645
+    sampling_strategy: SamplingStrategy = SamplingStrategy.GREEDY
 
 
 class MLP(nn.Module):
@@ -222,12 +227,20 @@ class Qwen3Model(nn.Module):
         curr_len: int = in_len
         gen_ids: list[int] = []
         concated: str = ''
+
+        def sample(logits: Tensor, strategy: SamplingStrategy) -> int: # Sample according to strategy
+            match strategy:
+                case SamplingStrategy.GREEDY:
+                    return int(logits.argmax(dim=0).item())
+                case SamplingStrategy.TOPK:
+                    top_vals, top_idx = logits.topk(top_k, dim=0, largest=True, sorted=False)
+                    pick: Tensor = top_vals.softmax(dim=-1).reshape(1, -1).multinomial(num_samples=1)
+                    return int(top_idx[pick[0, 0]].item())
+                case _:
+                    raise RuntimeError(f'Invalid sampling strategy: {strategy}')
+
         for _ in range(max_tokens):
-            logits_1d: Tensor = next_logits.reshape(-1)
-            #top_vals, top_idx = logits_1d.topk(top_k, dim=0, largest=True, sorted=False)
-            #pick: Tensor = top_vals.softmax(dim=-1).reshape(1, -1).multinomial(num_samples=1)
-            #tok_id: int = int(top_idx[pick[0, 0]].item())
-            tok_id = int(logits_1d.argmax(dim=0).item())
+            tok_id: int = sample(next_logits.reshape(-1), self.config.sampling_strategy)
             if tok_id == self.config.eos_token_id or tok_id in _EOS:
                 return
             gen_ids.append(tok_id)
