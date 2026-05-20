@@ -234,8 +234,7 @@ class Qwen3Model(nn.Module):
                     return int(logits.argmax(dim=0).item())
                 case SamplingStrategy.TOPK:
                     top_vals, top_idx = logits.topk(top_k, dim=0, largest=True, sorted=False)
-                    pick: Tensor = top_vals.softmax(dim=-1).reshape(1, -1).multinomial(num_samples=1)
-                    return int(top_idx[pick[0, 0]].item())
+                    return int(top_idx[top_vals.softmax(dim=-1).reshape(1, -1).multinomial(num_samples=1)[0, 0]].item())
                 case _:
                     raise RuntimeError(f'Invalid sampling strategy: {strategy}')
 
