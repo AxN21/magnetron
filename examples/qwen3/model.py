@@ -43,33 +43,37 @@ class Qwen3HyperParams:
     sampling_strategy: SamplingStrategy = SamplingStrategy.GREEDY
 
 
-@dataclass
 class KVLayerCache:
-    k: Tensor | None = None
-    v: Tensor | None = None
+    def __init__(self, batch_size: int, num_kv_heads: int, max_seq_len: int, head_dim: int) -> None:
+        self.k: Tensor = Tensor.zeros(batch_size, num_kv_heads, max_seq_len, head_dim)
+        self.v: Tensor = Tensor.zeros(batch_size, num_kv_heads, max_seq_len, head_dim)
+        self.pos: int = 0
 
     def append(self, curr_k: Tensor, curr_v: Tensor, sliding_window: int | None = None) -> tuple[Tensor, Tensor]:
-        if self.k is None and self.v is None:
-            self.k = curr_k
-            self.v = curr_v
-            return self.k, self.v
-        prev_k, prev_v = self.k, self.v
+        T: int = curr_k.shape[2]
+        start: int = self.pos
+        end: int = start + T
+        if end > self.k.shape[2]:
+            raise RuntimeError(f'KV cache overflow: {end} > {self.k.shape[2]}')
+        self.k[:, :, start:end, :] = curr_k
+        self.v[:, :, start:end, :] = curr_v
+        self.pos = end
+        view_start: int = 0
         if sliding_window is not None:
-            max_prev = max(0, sliding_window-curr_k.shape[2])
-            if prev_k.shape[2] > max_prev:
-                prev_k = prev_k[:, :, -max_prev:, :]
-                prev_v = prev_v[:, :, -max_prev:, :]
-        self.k = Tensor.cat([prev_k, curr_k], dim=2)
-        self.v = Tensor.cat([prev_v, curr_v], dim=2)
-        return self.k, self.v
+            view_start = max(end - sliding_window, 0)
+        return self.k[:, :, view_start:end, :], self.v[:, :, view_start:end, :]
 
     def clear(self) -> None:
-        self.k = None
-        self.v = None
+        self.pos = 0
+
 
 class KVCache:
-    def __init__(self, num_layers: int) -> None:
-        self.layers: list[KVLayerCache] = [KVLayerCache() for _ in range(num_layers)]
+    def __init__(self, config: Qwen3HyperParams, batch_size: int = 1, max_seq_len: int | None = None) -> None:
+        max_seq_len = max_seq_len or config.max_position_embeddings
+        self.layers: list[KVLayerCache] = [
+            KVLayerCache(batch_size=batch_size, num_kv_heads=config.num_key_value_heads, max_seq_len=max_seq_len, head_dim=config.head_dim)
+            for _ in range(config.num_hidden_layers)
+        ]
 
     def __getitem__(self, idx: int) -> KVLayerCache:
         return self.layers[idx]
@@ -77,6 +81,7 @@ class KVCache:
     def clear(self) -> None:
         for layer in self.layers:
             layer.clear()
+
 
 class MLP(nn.Module):
     def __init__(self, config: Qwen3HyperParams) -> None:
@@ -145,23 +150,16 @@ class SlidingWindowAttention(nn.Module):
         self.q_norm = nn.RMSNorm(self.head_dim, eps=config.rms_norm_eps, dtype=dtype.bfloat16, init=False)
         self.k_norm = nn.RMSNorm(self.head_dim, eps=config.rms_norm_eps, dtype=dtype.bfloat16, init=False)
 
-    def forward(
-        self,
-        x: Tensor,
-        cos_freq: Tensor,
-        sin_freq: Tensor,
-        idx: Tensor,
-        cache: KVLayerCache | None = None
-    ) -> Tensor:
+    def forward(self, x: Tensor, cos_freq: Tensor, sin_freq: Tensor, idx: Tensor, cache: KVLayerCache | None = None) -> Tensor:
         B, T, _ = x.shape
         curr_k = self.k_norm(self.k_proj(x).reshape(B, T, self.num_kv_heads, self.head_dim).transpose(1, 2))
         curr_v = self.v_proj(x).reshape(B, T, self.num_kv_heads, self.head_dim).transpose(1, 2)
         q = self.q_norm(self.q_proj(x).reshape(B, T, self.num_heads, self.head_dim).transpose(1, 2))
         q, curr_k = _apply_rope(q, curr_k, cos_freq, sin_freq, idx)
         if cache is not None:
-            k,v = cache.append(curr_k, curr_v, self.sliding_window)
+            k, v = cache.append(curr_k, curr_v, self.sliding_window)
         else:
-            k,v = curr_k, curr_v
+            k, v = curr_k, curr_v
         k = _repeat_kv(k, self.n_rep)
         v = _repeat_kv(v, self.n_rep)
         scores: Tensor = (q @ k.transpose(2, 3)) * (1.0 / math.sqrt(self.head_dim))
@@ -181,16 +179,9 @@ class Block(nn.Module):
         self.input_layernorm = nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps, init=False, dtype=dtype.bfloat16)
         self.post_attention_layernorm = nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps, init=False, dtype=dtype.bfloat16)
 
-    def forward(
-        self,
-        x: Tensor,
-        freq_cos: Tensor,
-        freq_sin: Tensor,
-        idx: Tensor,
-        cache: KVLayerCache | None = None
-    ) -> Tensor:
+    def forward(self, x: Tensor, freq_cos: Tensor, freq_sin: Tensor, idx: Tensor, cache: KVLayerCache | None = None) -> Tensor:
         h = x + self.self_attn(
-        self.input_layernorm(x),
+            self.input_layernorm(x),
             freq_cos,
             freq_sin,
             idx,
@@ -215,7 +206,7 @@ class Qwen3Model(nn.Module):
         self.cache = self._alloc_kv_cache()
 
     def _alloc_kv_cache(self) -> KVCache:
-        return KVCache(len(self.layers))
+        return KVCache(self.config)
 
     def _load_from_snapshot(self, snapshot_file: str) -> None:
         with Snapshot.read(snapshot_file) as snap:
@@ -288,10 +279,7 @@ class Qwen3Model(nn.Module):
                 concated = text
                 yield delta
             input_ids = Tensor([tok_id], dtype=dtype.int64).reshape(1, 1)
-            logits = self(
-                input_ids,
-                idx=Tensor([curr_len], dtype=dtype.int64).reshape(1, 1)
-            )
+            logits = self(input_ids, idx=Tensor([curr_len], dtype=dtype.int64).reshape(1, 1))
             next_logits = logits[:, -1, :] / temp
             curr_len += 1
 
