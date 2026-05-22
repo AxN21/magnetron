@@ -227,7 +227,7 @@ bool mag_ctx_grad_recorder_is_running(const mag_context_t *ctx) {
 }
 
 static void mag_seed_callback(mag_backend_t *bck, mag_device_t *dvc, void *usr) {
-  (*dvc->manual_seed)(dvc, *(const uint64_t *)usr);
+  (*dvc->manual_seed)(dvc, NULL, *(const uint64_t *)usr);
 }
 
 void mag_ctx_manual_seed(mag_context_t *ctx, uint64_t seed) {

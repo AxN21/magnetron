@@ -11,14 +11,9 @@
 
 #include <core/mag_reduce_plan.h>
 
-typedef struct mag_var_acc_t { /* Variance accumulation state */
-  double mean;
-  double M2;
-  int64_t n;
-} mag_var_acc_t;
-
 #define mag_cpu_impl_reduce_axes(T, OT, TF, FUNC, ACC_T, INIT_EXPR, UPDATE_STMT, FINAL_STMT) \
-  static void MAG_HOTPROC mag_##FUNC##_##TF(const mag_kernel_payload_t *payload) { \
+  static mag_status_t MAG_HOTPROC mag_##FUNC##_##TF(mag_error_t *err,const mag_kernel_payload_t *payload) { \
+    (void)err; \
     mag_tensor_t *r = mag_cmd_out(0); \
     const mag_tensor_t *x = mag_cmd_in(0); \
     OT *br = (OT *)mag_tensor_data_ptr_mut(r); \
@@ -44,6 +39,7 @@ typedef struct mag_var_acc_t { /* Variance accumulation state */
       OT *o = br + oi; \
       { FINAL_STMT } \
     } \
+    return MAG_STATUS_OK; \
   }
 
 mag_cpu_impl_reduce_axes(float, float, float32, mean, double, 0.0, acc += (double)bx[roff];, acc /= (double)red_prod; *o = (float)acc; )
@@ -272,7 +268,8 @@ mag_cpu_impl_argminmax_int(int64_t,  int64);
 #undef mag_cpu_impl_reduce_axes
 
 #define mag_cpu_impl_reduce_axes_logical(T, TF, FUNC, IDENTITY, UPDATE_STMT, BREAK_COND) \
-  static void MAG_HOTPROC mag_##FUNC##_##TF(const mag_kernel_payload_t *payload) { \
+  static mag_status_t MAG_HOTPROC mag_##FUNC##_##TF(mag_error_t *err, const mag_kernel_payload_t *payload) { \
+    (void)err; \
     mag_tensor_t *r = mag_cmd_out(0); \
     const mag_tensor_t *x = mag_cmd_in(0); \
     uint8_t *br = (uint8_t *)mag_tensor_data_ptr_mut(r); \
@@ -302,6 +299,7 @@ mag_cpu_impl_argminmax_int(int64_t,  int64);
       } \
       br[oi] = acc; \
     } \
+    return MAG_STATUS_OK; \
   }
 
 

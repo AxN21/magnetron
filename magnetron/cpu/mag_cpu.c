@@ -67,9 +67,9 @@ const uint32_t mag_crc32c_lut[256] = {
   0xbe2da0a5, 0x4c4623a6, 0x5f16d052, 0xad7d5351
 };
 
-static MAG_HOTPROC mag_status_t mag_cpu_submit(mag_device_t *dvc, const mag_command_t *cmd) {
-  mag_cpu_device_t *cpu_dvc = dvc->impl;
-  uint32_t intraop_workers = mag_cpu_tune_heuristics_intraop_workers(cmd, dvc); /* Determine number of intra-op workers */
+static MAG_HOTPROC mag_status_t mag_cpu_submit(mag_device_t *device, mag_error_t *err, const mag_command_t *cmd) {
+  mag_cpu_device_t *cpu_dvc = device->impl;
+  uint32_t intraop_workers = mag_cpu_tune_heuristics_intraop_workers(cmd, device); /* Determine number of intra-op workers */
   if (intraop_workers <= 1) { /* Main thread does the work (single threaded mode). */
     volatile mag_atomic64_t next_tile = 0; /* Tile index for the next tile to process. */
     mag_kernel_payload_t *yy = &cpu_dvc->pool->workers[0].payload; /* TODO: Ugly */
@@ -81,11 +81,9 @@ static MAG_HOTPROC mag_status_t mag_cpu_submit(mag_device_t *dvc, const mag_comm
       .mm_next_tile = &next_tile,
       .mm_params = yy->mm_params
     };
-    mag_worker_exec_thread_local(&cpu_dvc->kernels, &payload);
-    return MAG_STATUS_OK; /* We're done */
+    return mag_worker_exec_thread_local(err, &cpu_dvc->kernels, &payload);
   }
-  mag_threadpool_parallel_compute(cpu_dvc->pool, cmd, intraop_workers); /* Multithreaded exec + barrier */
-  return MAG_STATUS_OK;
+  return mag_threadpool_parallel_compute(err, cpu_dvc->pool, cmd, intraop_workers); /* Multithreaded exec + barrier */
 }
 
 static mag_status_t mag_cpu_storage_dtor(void *self) {
@@ -99,8 +97,8 @@ static mag_status_t mag_cpu_storage_dtor(void *self) {
   return MAG_STATUS_OK;
 }
 
-static mag_status_t mag_cpu_alloc_storage(mag_device_t *host, mag_storage_buffer_t **out, size_t size, mag_dtype_t dtype) {
-  mag_context_t *ctx = host->ctx;
+static mag_status_t mag_cpu_alloc_storage(mag_device_t *device, mag_error_t *err, mag_storage_buffer_t **out, size_t size) {
+  mag_context_t *ctx = device->ctx;
   mag_storage_buffer_t *buf = mag_slab_alloc(&ctx->storage_slab);
   *buf = (mag_storage_buffer_t) { /* Set up storage buffer. */
     .ctx = ctx,
@@ -109,27 +107,27 @@ static mag_status_t mag_cpu_alloc_storage(mag_device_t *host, mag_storage_buffer
     .alignment = MAG_CPU_BUF_ALIGN,
     .base = 0,
     .size = size,
-    .device = host,
+    .device = device,
   };
   if (size <= MAG_CPU_BUF_INTRUSIVE_CAP) { /* Store value intrusive (scalar storage optimization) */
     buf->base = (uintptr_t)buf->aux.intrusive_storage;
-    buf->flags |= MAG_STORAGE_FLAG_BORROWED;
+    buf->flags|=MAG_STORAGE_FLAG_BORROWED;
   } else {
     void *base = (*mag_try_alloc)(NULL, size, MAG_CPU_BUF_ALIGN);
-    if (mag_unlikely(!base)) { /* Allocation failed (OOM). */
+    mag_contract(err, ERR_MEMORY_ALLOCATION_FAILED, {
       mag_slab_free(&ctx->storage_slab, buf);
-      return MAG_STATUS_ERR_MEMORY_ALLOCATION_FAILED;
-    }
+    }, base != NULL, "Failed to allocate CPU storage buffer of size %zu bytes", size);
     buf->base = (uintptr_t)base;
   }
   mag_assert2(!(buf->base&(MAG_CPU_BUF_ALIGN-1))); /* Ensure alignment */
   mag_rc_init_object(buf, &mag_cpu_storage_dtor);
-  ++host->ctx->telemetry.num_alive_storages;
+  ++device->ctx->telemetry.num_alive_storages;
   *out = buf;
   return MAG_STATUS_OK;
 }
 
-static void mag_cpu_manual_seed(mag_device_t *dvc, uint64_t seed) {
+static void mag_cpu_manual_seed(mag_device_t *dvc, mag_error_t *err, uint64_t seed) {
+  (void)err;
   mag_cpu_device_t *cpu_dvc = dvc->impl;
   mag_philox4x32_stream_seed(&cpu_dvc->primary_prng, seed, 0);
   if (cpu_dvc->pool) {

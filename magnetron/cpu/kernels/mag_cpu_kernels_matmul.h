@@ -682,7 +682,8 @@ static int64_t mag_offset_rmn(const mag_tensor_t *t, int64_t flat, int64_t i, in
   return off;
 }
 
-MAG_HOTPROC static void mag_matmul_float32(const mag_kernel_payload_t *payload) {
+MAG_HOTPROC static mag_status_t mag_matmul_float32(mag_error_t *err, const mag_kernel_payload_t *payload) {
+  (void)err;
   mag_tensor_t *r = mag_cmd_out(0);
   const mag_tensor_t *x = mag_cmd_in(0);
   const mag_tensor_t *y = mag_cmd_in(1);
@@ -713,7 +714,7 @@ MAG_HOTPROC static void mag_matmul_float32(const mag_kernel_payload_t *payload) 
       float *C = br + mag_offset_rmn(r, batch, 0, 0) + j0;
       mag_gemv_float32(K, j1 - j0, A, B, N, C);
     }
-    return;
+    return MAG_STATUS_OK;
   }
   int64_t bdx = x->coords.rank > 2 ? x->coords.rank-2 : 0;
   int64_t bdy = y->coords.rank > 2 ? y->coords.rank-2 : 0;
@@ -780,9 +781,11 @@ MAG_HOTPROC static void mag_matmul_float32(const mag_kernel_payload_t *payload) 
     }
   }
   mag_scratch_arena_clear(&mag_tls_arena);
+  return MAG_STATUS_OK;
 }
 
-MAG_HOTPROC static void mag_matmul_bfloat16(const mag_kernel_payload_t *payload) {
+MAG_HOTPROC static mag_status_t mag_matmul_bfloat16(mag_error_t *err,const mag_kernel_payload_t *payload) {
+  (void)err;
   mag_tensor_t *r = mag_cmd_out(0);
   const mag_tensor_t *x = mag_cmd_in(0);
   const mag_tensor_t *y = mag_cmd_in(1);
@@ -813,7 +816,7 @@ MAG_HOTPROC static void mag_matmul_bfloat16(const mag_kernel_payload_t *payload)
       mag_bfloat16_t *C = br + mag_offset_rmn(r, batch, 0, 0) + j0;
       mag_gemv_bfloat16(K, j1 - j0, A, B, N, C);
     }
-    return;
+    return MAG_STATUS_OK;
   }
   int64_t bdx = x->coords.rank > 2 ? x->coords.rank-2 : 0;
   int64_t bdy = y->coords.rank > 2 ? y->coords.rank-2 : 0;
@@ -880,6 +883,7 @@ MAG_HOTPROC static void mag_matmul_bfloat16(const mag_kernel_payload_t *payload)
     }
   }
   mag_scratch_arena_clear(&mag_tls_arena);
+  return MAG_STATUS_OK;
 }
 
 static MAG_AINLINE float mag_load_x_f16_as_f32(
@@ -923,7 +927,8 @@ static MAG_AINLINE void mag_store_r_f16_from_f32(
   }
 }
 
-static MAG_HOTPROC void mag_matmul_float16(const mag_kernel_payload_t *payload) {
+static MAG_HOTPROC mag_status_t mag_matmul_float16(mag_error_t *err,const mag_kernel_payload_t *payload) {
+  (void)err;
   mag_tensor_t *r = mag_cmd_out(0);
   const mag_tensor_t *x = mag_cmd_in(0);
   const mag_tensor_t *y = mag_cmd_in(1);
@@ -977,4 +982,5 @@ static MAG_HOTPROC void mag_matmul_float16(const mag_kernel_payload_t *payload) 
       mag_store_r_f16_from_f32(r, br, rb_flat, i, n, sum);
     }
   }
+  return MAG_STATUS_OK;
 }

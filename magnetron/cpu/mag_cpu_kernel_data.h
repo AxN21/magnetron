@@ -40,7 +40,7 @@ typedef struct mag_kernel_payload_t {
 typedef struct mag_kernel_registry_t {
   void (*init)(void);
   void (*deinit)(void);
-  void (*operators[MAG_OP__NUM][MAG_DTYPE__NUM])(const mag_kernel_payload_t *);
+  mag_status_t (*operators[MAG_OP__NUM][MAG_DTYPE__NUM])(mag_error_t *, const mag_kernel_payload_t *);
   size_t (*vreg_width)(void);
   uint32_t (*crc32c)(const void *buf, size_t nb);
 } mag_kernel_registry_t;

@@ -123,9 +123,12 @@ static MAG_AINLINE float mag_bfloat16_to_float32(mag_bfloat16_t x) {
 #include "mag_cpu_kernels_misc.h"
 #include "mag_cpu_kernels_reduction.h"
 
-static void mag_nop(const mag_kernel_payload_t *payload) { (void)payload; }
+static mag_status_t mag_nop(mag_error_t *err, const mag_kernel_payload_t *payload) {
+  (void)err, (void)payload;
+  return MAG_STATUS_OK;
+}
 
-static void (*const mag_lut_eval_kernels[MAG_OP__NUM][MAG_DTYPE__NUM])(const mag_kernel_payload_t *) = {
+static mag_status_t (*const mag_lut_eval_kernels[MAG_OP__NUM][MAG_DTYPE__NUM])(mag_error_t *, const mag_kernel_payload_t *) = {
   [MAG_OP_NOP] = {
     [MAG_DTYPE_FLOAT32] = &mag_nop,
     [MAG_DTYPE_FLOAT16] = &mag_nop,

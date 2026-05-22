@@ -41,11 +41,13 @@ struct mag_worker_t {
   mag_thread_pool_t *pool;                /* Host thread pool */
   bool is_async;                          /* True if worker is async (executed on a different thread)  */
   mag_thread_t thread;                    /* Thread handle */
+  mag_error_t err;                        /* Worker local error */
+  mag_status_t stat;                      /* Worker local status */
 } mag_alignas(MAG_DESTRUCTIVE_INTERFERENCE_SIZE);
 
 extern mag_thread_pool_t *mag_threadpool_create(mag_context_t *host_ctx, uint32_t num_workers, const mag_kernel_registry_t *kernels, mag_numa_node_controller_t *numa, mag_thread_prio_t prio);
-extern void mag_worker_exec_thread_local(const mag_kernel_registry_t *kernels, mag_kernel_payload_t *payload);
-extern void mag_threadpool_parallel_compute(mag_thread_pool_t *pool, const mag_command_t *cmd, uint32_t num_active_workers);
+extern mag_status_t mag_worker_exec_thread_local(mag_error_t *err, const mag_kernel_registry_t *kernels, mag_kernel_payload_t *payload);
+extern mag_status_t mag_threadpool_parallel_compute(mag_error_t *err,mag_thread_pool_t *pool, const mag_command_t *cmd, uint32_t num_active_workers);
 extern void mag_threadpool_destroy(mag_thread_pool_t *pool);
 
 #ifdef __cplusplus

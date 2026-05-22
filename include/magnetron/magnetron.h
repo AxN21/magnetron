@@ -76,6 +76,8 @@ extern MAG_EXPORT mag_log_level_t mag_log_level(void); /* Get current global log
     _(MAG_STATUS_ERR_FAILED_TO_MAP_FILE, "Failed to memory map file") \
     _(MAG_STATUS_ERR_STREAM_IO_ERROR, "Stream IO processing error") \
     _(MAG_STATUS_ERR_SERIALIZATION_ERROR, "De/serialization error") \
+    _(MAG_STATUS_ERR_MISSING_COMPUTE_KERNEL, "Missing compute kernel for requested operation") \
+    _(MAG_STATUS_ERR_KERNEL_FAILURE, "Error while executing compute kernel") \
     _(MAG_STATUS_ERR_UNKNOWN, "Unknown error")
 
 typedef enum mag_status_t {

@@ -33,25 +33,26 @@ static mag_dtype_t mag_command_dispatch_dtype(const mag_command_t *cmd) {
 }
 
 /* Execute the operation on the current thread */
-void mag_worker_exec_thread_local(const mag_kernel_registry_t *kernels, mag_kernel_payload_t *payload) {
-  if (mag_unlikely(!payload->cmd)) return;
+mag_status_t mag_worker_exec_thread_local(mag_error_t *err, const mag_kernel_registry_t *kernels, mag_kernel_payload_t *payload) {
+  mag_contract(err, ERR_MISSING_COMPUTE_KERNEL, {}, payload->cmd != NULL, "Missing kernel command descriptor");
   mag_opcode_t op = payload->cmd->op;
   mag_dtype_t dtype = mag_command_dispatch_dtype(payload->cmd);
   mag_assert2(op >= 0 && op < MAG_OP__NUM);
   mag_assert2(dtype >= 0 && dtype < MAG_DTYPE__NUM);
-  void (*kernel)(const mag_kernel_payload_t *) = kernels->operators[op][dtype];
-  mag_assert(kernel, "No kernel found for op '%s' with dtype %s", mag_op_traits(op)->mnemonic, mag_type_trait(dtype)->name);
-  (*kernel)(payload);
+  mag_status_t (*kernel)(mag_error_t *, const mag_kernel_payload_t *) = kernels->operators[op][dtype];
+  mag_contract(err, ERR_MISSING_COMPUTE_KERNEL, {}, kernel != NULL, "No kernel found for op '%s' with dtype %s", mag_op_traits(op)->mnemonic, mag_type_trait(dtype)->name);
+  mag_status_t stat = (*kernel)(err, payload);
   payload->cmd = NULL;
+  return stat;
 }
 
 /* Execute the operation and broadcast completion if last chunk was done */
-static void mag_worker_exec_and_broadcast(mag_thread_pool_t *pool, const mag_kernel_registry_t *kernels, mag_kernel_payload_t *payload) {
+static mag_status_t mag_worker_exec_and_broadcast(mag_error_t *err, mag_thread_pool_t *pool, const mag_kernel_registry_t *kernels, mag_kernel_payload_t *payload) {
+  mag_status_t stat = MAG_STATUS_OK;
   if (mag_likely(payload->thread_idx < pool->num_active_workers))
-    mag_worker_exec_thread_local(kernels, payload);
-
-  /* signal completion to master */
-  mag_phase_fence_done(&pool->fence);
+    stat = mag_worker_exec_thread_local(err, kernels, payload);
+  mag_phase_fence_done(&pool->fence);   /* signal completion to master */
+  return stat;
 }
 
 /* Worker thread entry point */
@@ -59,6 +60,8 @@ static MAG_HOTPROC void *mag_worker_thread_entry(void *arg) {
   mag_worker_t *worker = arg;
   mag_thread_pool_t *pool = worker->pool;
   mag_kernel_payload_t *payload = &worker->payload;
+  mag_error_t *err = &worker->err;
+  mag_status_t *stat = &worker->stat;
   const mag_kernel_registry_t *kernels = pool->kernels;
   char name[32];
   snprintf(name, sizeof(name), "mag_worker_%" PRIx64, payload->thread_idx);
@@ -68,7 +71,7 @@ static MAG_HOTPROC void *mag_worker_thread_entry(void *arg) {
     mag_numa_pin_thread_affinity(pool->numa_ctrl, payload->thread_idx);
   mag_atomic32_fetch_add(&pool->num_workers_online, 1, MAG_MO_SEQ_CST);
   while (mag_likely(mag_worker_await_work(worker, pool)))  /* Main work loop: wait, work, signal status */
-    mag_worker_exec_and_broadcast(pool, kernels, payload);
+    *stat = mag_worker_exec_and_broadcast(err, pool, kernels, payload);
   mag_atomic32_fetch_sub(&pool->num_workers_online, 1, MAG_MO_SEQ_CST);
   return MAG_THREAD_RET_NONE;
 }
@@ -144,11 +147,33 @@ static void mag_threadpool_barrier(mag_thread_pool_t *pool) {
   mag_phase_fence_barrier(&pool->fence);
 }
 
+static void mag_threadpool_clear_worker_status(mag_thread_pool_t *pool) {
+  for (uint32_t i=0; i < pool->num_allocated_workers; ++i) {
+    pool->workers[i].stat = MAG_STATUS_OK;
+    memset(&pool->workers[i].err, 0, sizeof(pool->workers[i].err));
+  }
+}
+
+static mag_status_t mag_threadpool_collect_status(mag_error_t *err, mag_thread_pool_t *pool) {
+  for (uint32_t i=0; i < pool->num_active_workers; ++i) {
+    mag_worker_t *w = &pool->workers[i];
+    if (mag_unlikely(w->stat != MAG_STATUS_OK)) {
+      if (err && err->code == MAG_STATUS_OK)
+        *err = w->err;
+      return w->stat;
+    }
+  }
+  return MAG_STATUS_OK;
+}
+
 /* Execute an operator tensor on the CPU */
-void mag_threadpool_parallel_compute(mag_thread_pool_t *pool, const mag_command_t *cmd, uint32_t num_active_workers) {
+mag_status_t mag_threadpool_parallel_compute(mag_error_t *err, mag_thread_pool_t *pool, const mag_command_t *cmd, uint32_t num_active_workers) {
   mag_assert2(pool != NULL);
+  if (err) memset(err, 0, sizeof(*err));
+  mag_threadpool_clear_worker_status(pool);
   volatile mag_atomic64_t next_tile = 0;
-  mag_threadpool_kickoff(pool, cmd, num_active_workers, &next_tile);                  /* Kick off workers */
-  mag_worker_exec_and_broadcast(pool, pool->kernels, &pool->workers->payload);        /* Main thread does work too */
-  mag_threadpool_barrier(pool);                                                       /* Wait for all workers to finish */
+  mag_threadpool_kickoff(pool, cmd, num_active_workers, &next_tile); /* Kick off workers */
+  pool->workers[0].stat = mag_worker_exec_and_broadcast(err, pool, pool->kernels, &pool->workers->payload); /* Main thread does work too */
+  mag_threadpool_barrier(pool); /* Wait for all workers to finish */
+  return mag_threadpool_collect_status(err, pool);
 }

@@ -99,8 +99,8 @@ mag_status_t mag_tensor_init(
   mag_contract(err, ERR_INVALID_DEVICE, {}, mag_backend_registry_get_backend_and_device_by_id(ctx->backend_registry, device, NULL, &target_device), "Invalid device id %s, device or backend might not be available", device_name);
   mag_tensor_t *tensor = mag_tensor_init_header(ctx, type, rank, numel); /* Alloc tensor header. */
   if (!storage) {
-    mag_status_t (*allocator)(mag_device_t *, mag_storage_buffer_t **, size_t, mag_dtype_t) = target_device->alloc_storage;
-    mag_try_or((*allocator)(target_device, &tensor->storage, numbytes, type), {
+    mag_status_t (*allocator)(mag_device_t *, mag_error_t *, mag_storage_buffer_t **, size_t) = target_device->alloc_storage;
+    mag_try_or((*allocator)(target_device, err, &tensor->storage, numbytes), {
       mag_tensor_free_header(tensor);
     });
   } else {

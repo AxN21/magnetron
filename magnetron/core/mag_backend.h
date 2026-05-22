@@ -71,9 +71,9 @@ struct mag_device_t {
   mag_context_t *ctx;                                                     /* Owning context */
   mag_device_id_t id;                                                     /* Device ID, (e.g. cuda:0, cpu, etc..) */
   bool is_async;                                                          /* True if the device executes commands asynchronously. */
-  mag_status_t (*submit)(mag_device_t *dvc, const mag_command_t *cmd);    /* Submit a command to the device for execution. */
-  mag_status_t (*alloc_storage)(mag_device_t *dvc, mag_storage_buffer_t **out, size_t size, mag_dtype_t dtype);
-  void (*manual_seed)(mag_device_t *dvc, uint64_t seed);
+  mag_status_t (*submit)(mag_device_t *dvc, mag_error_t *err, const mag_command_t *cmd);    /* Submit a command to the device for execution. */
+  mag_status_t (*alloc_storage)(mag_device_t *dvc, mag_error_t *err, mag_storage_buffer_t **out, size_t size);
+  void (*manual_seed)(mag_device_t *dvc, mag_error_t *err, uint64_t seed);
   mag_status_t (*transfer)(mag_device_t *dvc, mag_error_t *err, mag_transfer_dir_t dir, mag_tensor_t *src, mag_tensor_t *dst);
   char physical_device_name[256];                                         /* Physical device name, (e.g. "RTX 5080", "Threadripper 9980X") */
 };

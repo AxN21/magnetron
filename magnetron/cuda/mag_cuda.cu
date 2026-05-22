@@ -55,7 +55,7 @@ namespace mag {
     explicit cuda_backend_error(cudaError_t code, const char *what) : std::runtime_error {fmt_error_message(code, what)} { }
   };
 
-  static void manual_seed(mag_device_t *dvc, uint64_t seed) {
+  static void manual_seed(mag_device_t *dvc, [[maybe_unused]] mag_error_t *err, uint64_t seed) {
     global_seed.store(seed, std::memory_order_relaxed);
   }
 
@@ -125,7 +125,7 @@ namespace mag {
     }
   }
 
-  [[nodiscard]] static mag_status_t submit(mag_device_t *dvc, const mag_command_t *cmd) {
+  [[nodiscard]] static mag_status_t submit(mag_device_t *dvc, [[maybe_unused]] mag_error_t *err, const mag_command_t *cmd) {
     mag_cuda_check(cudaSetDevice(static_cast<int>(dvc->id.device_ordinal)));
 
     static constexpr auto *op_nop = +[](const mag_command_t &) -> void { };
@@ -242,7 +242,7 @@ namespace mag {
     return MAG_STATUS_OK;
   }
 
-  [[nodiscard]] static mag_status_t alloc_storage_buffer(mag_device_t *dvc, mag_storage_buffer_t **out, size_t size, mag_dtype_t dtype) {
+  [[nodiscard]] static mag_status_t alloc_storage_buffer(mag_device_t *dvc, [[maybe_unused]] mag_error_t *err, mag_storage_buffer_t **out, size_t size) {
     mag_context_t *ctx = dvc->ctx;
     uintptr_t base;
     if (cudaSetDevice(static_cast<int>(dvc->id.device_ordinal)) != cudaSuccess)

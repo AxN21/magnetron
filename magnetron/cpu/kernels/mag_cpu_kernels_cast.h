@@ -435,7 +435,7 @@ static mag_vcast_fn_t *const mag_cast_table_2D[MAG_DTYPE__NUM][MAG_DTYPE__NUM] =
   },
 };
 
-static MAG_HOTPROC void mag_cast_generic(const mag_kernel_payload_t *payload) {
+static MAG_HOTPROC mag_status_t mag_cast_generic(mag_error_t *err, const mag_kernel_payload_t *payload) {
   mag_tensor_t *r = mag_cmd_out(0);
   const mag_tensor_t *x = mag_cmd_in(0);
   mag_dtype_t src = x->dtype;
@@ -443,7 +443,7 @@ static MAG_HOTPROC void mag_cast_generic(const mag_kernel_payload_t *payload) {
   const mag_type_traits_t *msrc = mag_type_trait(src);
   const mag_type_traits_t *mdst = mag_type_trait(dst);
   mag_vcast_fn_t *kernel = mag_cast_table_2D[src][dst];
-  mag_assert(kernel, "No kernel found for type cast: %s -> %s", msrc->name, mdst->name);
+  mag_contract(err, ERR_MISSING_COMPUTE_KERNEL, {}, kernel != NULL, "No kernel found for type cast: from type %s -> %s", msrc->name, mdst->name);
   uint8_t *br = (uint8_t *)mag_tensor_data_ptr_mut(r);
   const uint8_t *bx = (const uint8_t *)mag_tensor_data_ptr(x);
   int64_t nbs = (int64_t)msrc->size;
@@ -454,14 +454,14 @@ static MAG_HOTPROC void mag_cast_generic(const mag_kernel_payload_t *payload) {
   int64_t chunk = (total + tc - 1)/tc;
   int64_t ra = ti*chunk;
   int64_t rb = mag_xmin(ra + chunk, total);
-  if (mag_unlikely(rb <= ra)) return;
+  if (mag_unlikely(rb <= ra)) return MAG_STATUS_OK;
   if (mag_all_shapes_equal_and_contig((const mag_tensor_t *[2]){r, x}, 2)) { /* TODO: can be relaxed to non-shape equality */
     void *pr = br + ra*nbd;
     const void *px = bx + ra*nbs;
     mag_bnd_chk(px, bx, mag_tensor_numbytes(x));
     mag_bnd_chk(pr, br, mag_tensor_numbytes(r));
     (*kernel)(rb-ra, pr, px);
-    return;
+    return MAG_STATUS_OK;
   }
   /* We work in byte granularity and compute pointer offsets manually to avoid a generic for this stub function */
   mag_coords_iter_t cr, cx;
@@ -476,4 +476,5 @@ static MAG_HOTPROC void mag_cast_generic(const mag_kernel_payload_t *payload) {
     mag_bnd_chk(pr, br, mag_tensor_numbytes(r));
     (*kernel)(1, pr, px);
   }
+  return MAG_STATUS_OK;
 }

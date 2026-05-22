@@ -10,7 +10,8 @@
 */
 
 #define mag_gen_stub_clone(T, TF) \
-  static MAG_HOTPROC void mag_clone_##TF(const mag_kernel_payload_t *payload) { \
+  static MAG_HOTPROC mag_status_t mag_clone_##TF(mag_error_t *err, const mag_kernel_payload_t *payload) { \
+    (void)err; \
     mag_tensor_t *r = mag_cmd_out(0); \
     const mag_tensor_t *x = mag_cmd_in(0); \
     T *br = (T *)mag_tensor_data_ptr_mut(r); \
@@ -21,10 +22,10 @@
     int64_t chunk = (total+tc-1)/tc; \
     int64_t ra = ti*chunk; \
     int64_t rb = mag_xmin(ra+chunk, total); \
-    if (mag_unlikely(rb <= ra)) return; \
+    if (mag_unlikely(rb <= ra)) return MAG_STATUS_OK; \
     if (mag_all_shapes_equal_and_contig((const mag_tensor_t *[2]){r, x}, 2)) { \
       memcpy(br+ra, bx+ra, (rb-ra)*sizeof(T)); \
-      return; \
+      return MAG_STATUS_OK; \
     } \
     mag_coords_iter_t cr, cx; \
     mag_coords_iter_init(&cr, &r->coords); \
@@ -36,6 +37,7 @@
       mag_bnd_chk(br+ri, br, mag_tensor_numbytes(r)); \
       br[ri] = bx[xi]; \
     } \
+    return MAG_STATUS_OK; \
   }
 
 mag_gen_stub_clone(float, float32)
@@ -206,7 +208,8 @@ static MAG_AINLINE mag_vf32_t mag_vec_sgn_f32(mag_vf32_t x) {
 }
 
 #define mag_gen_unary_scalar(T, TF, name, suffix) \
-  static void MAG_HOTPROC mag_##name##_##TF(const mag_kernel_payload_t *payload) { \
+  static mag_status_t MAG_HOTPROC mag_##name##_##TF(mag_error_t *err, const mag_kernel_payload_t *payload) { \
+    (void)err; \
     mag_tensor_t *r = mag_cmd_out(0); \
     const mag_tensor_t *x = mag_cmd_in(0); \
     T *br = (T *)mag_tensor_data_ptr_mut(r); \
@@ -217,11 +220,11 @@ static MAG_AINLINE mag_vf32_t mag_vec_sgn_f32(mag_vf32_t x) {
     int64_t chunk = (total+tc-1)/tc; \
     int64_t ra = ti*chunk; \
     int64_t rb = mag_xmin(ra+chunk, total); \
-    if (mag_unlikely(rb <= ra)) return; \
+    if (mag_unlikely(rb <= ra)) return MAG_STATUS_OK; \
     if (mag_all_shapes_equal_and_contig((const mag_tensor_t *[2]){r, x}, 2)) { \
       for (int64_t i=ra; i < rb; ++i) \
         br[i] = mag_fn_##name##_##suffix(bx[i]); \
-      return; \
+      return MAG_STATUS_OK; \
     } \
     mag_coords_iter_t cr, cx; \
     mag_coords_iter_init(&cr, &r->coords); \
@@ -231,10 +234,12 @@ static MAG_AINLINE mag_vf32_t mag_vec_sgn_f32(mag_vf32_t x) {
       mag_coords_iter_offset2(&cr, &cx, i, &ri, &xi); \
       br[ri] = mag_fn_##name##_##suffix(bx[xi]); \
     } \
+    return MAG_STATUS_OK; \
   }
 
 #define mag_gen_unary_simd(T, TF, suffix, ld, st, name) \
-  static void MAG_HOTPROC mag_##name##_##TF(const mag_kernel_payload_t *payload) { \
+  static mag_status_t MAG_HOTPROC mag_##name##_##TF(mag_error_t *err, const mag_kernel_payload_t *payload) { \
+    (void)err; \
     mag_tensor_t *r = mag_cmd_out(0); \
     const mag_tensor_t *x = mag_cmd_in(0); \
     T *br = (T *)mag_tensor_data_ptr_mut(r); \
@@ -245,7 +250,7 @@ static MAG_AINLINE mag_vf32_t mag_vec_sgn_f32(mag_vf32_t x) {
     int64_t chunk = (total+tc-1)/tc; \
     int64_t ra = ti*chunk; \
     int64_t rb = mag_xmin(ra+chunk, total); \
-    if (mag_unlikely(rb <= ra)) return; \
+    if (mag_unlikely(rb <= ra)) return MAG_STATUS_OK; \
     if (mag_all_shapes_equal_and_contig((const mag_tensor_t *[2]){r, x}, 2)) { \
       int64_t i = ra; \
       for (; i+MAG_VF32_LANES <= rb; i += MAG_VF32_LANES) { \
@@ -254,7 +259,7 @@ static MAG_AINLINE mag_vf32_t mag_vec_sgn_f32(mag_vf32_t x) {
         st(br+i, v); \
       } \
       for (; i < rb; ++i) br[i] = mag_fn_##name##_##suffix(bx[i]); \
-      return; \
+      return MAG_STATUS_OK; \
     } \
     mag_coords_iter_t cr, cx; \
     mag_coords_iter_init(&cr, &r->coords); \
@@ -264,6 +269,7 @@ static MAG_AINLINE mag_vf32_t mag_vec_sgn_f32(mag_vf32_t x) {
       mag_coords_iter_offset2(&cr, &cx, i, &ri, &xi); \
       br[ri] = mag_fn_##name##_##suffix(bx[xi]); \
     } \
+    return MAG_STATUS_OK; \
   }
 
 static MAG_AINLINE mag_vf32_t mag_vf32_loadu_f32(const float *p) { return mag_vf32_loadu(p); }
@@ -353,18 +359,18 @@ mag_gen_int_unary(sqr)
 #undef mag_fn_sqr_int
 
 #define mag_gen_softmax_simd(T, TF, ONE, LOAD, STORE, TO_F32, FROM_F32) \
-  static void MAG_HOTPROC mag_softmax_##TF(const mag_kernel_payload_t *payload) { \
+  static mag_status_t MAG_HOTPROC mag_softmax_##TF(mag_error_t *err, const mag_kernel_payload_t *payload) { \
     mag_tensor_t *r = mag_cmd_out(0); \
     const mag_tensor_t *x = mag_cmd_in(0); \
-    mag_assert(mag_tensor_is_contiguous(x), "Softmax input tensor must be contiguous"); \
+    mag_contract(err, ERR_KERNEL_FAILURE, {}, mag_tensor_is_contiguous(x), "First input tensor must be contiguous for softmax"); \
     T *br = (T *)mag_tensor_data_ptr_mut(r); \
     const T *bx = (const T *)mag_tensor_data_ptr(x); \
     int64_t rank = r->coords.rank; \
     int64_t numel = r->numel; \
-    if (mag_unlikely(!numel)) return; \
+    if (mag_unlikely(!numel)) return MAG_STATUS_OK; \
     if (rank == 0) { \
       if (payload->thread_idx == 0) *br = ONE; \
-      return; \
+      return MAG_STATUS_OK; \
     } \
     int64_t last_dim = r->coords.shape[rank - 1]; \
     int64_t rows = numel / last_dim; \
@@ -415,6 +421,7 @@ mag_gen_int_unary(sqr)
         } \
       } \
     } \
+    return MAG_STATUS_OK; \
   }
 
 #define mag_f32_id(x) (x)

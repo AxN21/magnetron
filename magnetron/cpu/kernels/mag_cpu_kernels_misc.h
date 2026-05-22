@@ -10,35 +10,30 @@
 */
 
 #define mag_gen_stub_cat(T, TF) \
-  static MAG_HOTPROC void mag_cat_##TF(const mag_kernel_payload_t *payload) { \
+  static MAG_HOTPROC mag_status_t mag_cat_##TF(mag_error_t *err, const mag_kernel_payload_t *payload) { \
+    (void)err; \
     mag_tensor_t *r = mag_cmd_out(0); \
     const int64_t dim = mag_op_attr_unwrap_int64(mag_cmd_attr(0)); \
     const int64_t n = payload->cmd->num_in; \
     mag_assert2(r && n > 0); \
     mag_assert2(dim >= 0 && dim < r->coords.rank); \
-    \
     int64_t R = r->coords.rank; \
     T *br = (T *)mag_tensor_data_ptr_mut(r); \
-    mag_assert2(mag_tensor_is_contiguous(r)); \
-    \
     int64_t inner_block = 1; \
     for (int64_t d = dim+1; d < R; ++d) inner_block *= r->coords.shape[d]; \
     int64_t outer_count = 1; \
     for (int64_t d=0; d < dim; ++d) outer_count *= r->coords.shape[d]; \
-    \
     int64_t mult[MAG_MAX_DIMS]; \
     for (int64_t d = 0; d < dim; ++d) { \
       int64_t m = 1; \
       for (int64_t k = d + 1; k < dim; ++k) m *= r->coords.shape[k]; \
       mult[d] = m; \
     } \
-    \
     int64_t tc = payload->thread_num; \
     int64_t ti = payload->thread_idx; \
     int64_t chunk = (outer_count + tc - 1)/tc; \
     int64_t oa = ti*chunk; \
     int64_t ob = mag_xmin(oa + chunk, outer_count); \
-    \
     for (int64_t p=oa; p < ob; ++p) { \
       int64_t idx_prefix[MAG_MAX_DIMS]; \
       int64_t rtmp = p; \
@@ -47,11 +42,9 @@
         if (mult[d] != 0) rtmp = rtmp%mult[d]; \
         idx_prefix[d] = q; \
       } \
-      \
       int64_t moff = 0; \
       for (int64_t d=0; d < dim; ++d) moff += idx_prefix[d]*r->coords.strides[d]; \
       int64_t cur = 0; \
-      \
       for (int64_t i=0; i < n; ++i) { \
         const mag_tensor_t *x = mag_cmd_in(i); \
         int64_t smoff=0; \
@@ -70,6 +63,7 @@
         cur += cl; \
       } \
     } \
+    return MAG_STATUS_OK; \
   }
 
 mag_gen_stub_cat(float, float32)
@@ -87,8 +81,9 @@ mag_gen_stub_cat(int64_t, int64)
 #undef mag_gen_stub_cat
 
 #define mag_gen_stub_repeat_back(T, TF, Z, CVT, RCVT) \
-  static void MAG_HOTPROC mag_repeat_back_##TF(const mag_kernel_payload_t *payload) { \
-    if (payload->thread_idx != 0) return; \
+  static mag_status_t MAG_HOTPROC mag_repeat_back_##TF(mag_error_t *err,const mag_kernel_payload_t *payload) { \
+    (void)err; \
+    if (payload->thread_idx != 0) return MAG_STATUS_OK; \
     mag_tensor_t *r = mag_cmd_out(0); \
     const mag_tensor_t *x = mag_cmd_in(0); \
     T *br = (T *)mag_tensor_data_ptr_mut(r); \
@@ -108,6 +103,7 @@ mag_gen_stub_cat(int64_t, int64)
       mag_bnd_chk(br+ri, br, mag_tensor_numbytes(r)); \
       br[ri] = RCVT(CVT(br[ri]) + CVT(bx[xi])); \
     } \
+    return MAG_STATUS_OK; \
   }
 
 mag_gen_stub_repeat_back(float, float32, .0f, mag_cvt_nop, mag_cvt_nop)
@@ -117,7 +113,8 @@ mag_gen_stub_repeat_back(mag_bfloat16_t, bfloat16, MAG_BFLOAT16_ZERO, mag_bfloat
 #undef mag_gen_stub_repeat_back
 
 #define mag_gen_stub_gather(T, TF) \
-  static MAG_HOTPROC void mag_gather_##TF(const mag_kernel_payload_t *payload) { \
+  static MAG_HOTPROC mag_status_t mag_gather_##TF(mag_error_t *err,const mag_kernel_payload_t *payload) { \
+    (void)err; \
     mag_tensor_t *r = mag_cmd_out(0); \
     const mag_tensor_t *src = mag_cmd_in(0); \
     const mag_tensor_t *index = mag_cmd_in(1); \
@@ -185,6 +182,7 @@ mag_gen_stub_repeat_back(mag_bfloat16_t, bfloat16, MAG_BFLOAT16_ZERO, mag_bfloat
       mag_bnd_chk(br + dest_offset, br, mag_tensor_numbytes(r)); \
       br[dest_offset] = bx[src_offset]; \
     } \
+    return MAG_STATUS_OK; \
   }
 
 mag_gen_stub_gather(float, float32)
@@ -202,7 +200,8 @@ mag_gen_stub_gather(int64_t, int64)
 #undef mag_gen_stub_gather
 
 #define mag_gen_stub_tri_mask(T, TF, S, Z, CMP) \
-  static void MAG_HOTPROC mag_tri##S##_##TF(const mag_kernel_payload_t *payload) { \
+  static mag_status_t MAG_HOTPROC mag_tri##S##_##TF(mag_error_t *err,const mag_kernel_payload_t *payload) { \
+    (void)err; \
     mag_tensor_t *r = mag_cmd_out(0); \
     const mag_tensor_t *x = mag_cmd_in(0); \
     T *br = (T *)mag_tensor_data_ptr_mut(r); \
@@ -230,6 +229,7 @@ mag_gen_stub_gather(int64_t, int64)
       mag_bnd_chk(br+ri, br, mag_tensor_numbytes(r)); \
       br[ri] = ((col-row) CMP diag) ? bx[xi] : (Z); \
     }  \
+    return MAG_STATUS_OK; \
   }
 
 mag_gen_stub_tri_mask(float, float32, l, 0.f, <=)
@@ -259,7 +259,8 @@ mag_gen_stub_tri_mask(int64_t, int64, u, 0, >=)
 #undef mag_gen_stub_tri_mask
 
 #define mag_gen_stub_topk(T, TF, CVT) \
-  static MAG_HOTPROC void mag_topk_##TF(const mag_kernel_payload_t *payload) { \
+  static MAG_HOTPROC mag_status_t mag_topk_##TF(mag_error_t *err,const mag_kernel_payload_t *payload) { \
+    (void)err; \
     const mag_tensor_t *x = mag_cmd_in(0); \
     mag_tensor_t *v = mag_cmd_out(0); \
     mag_tensor_t *idx = mag_cmd_out(1); \
@@ -287,7 +288,7 @@ mag_gen_stub_tri_mask(int64_t, int64, u, 0, >=)
     const int64_t tc = payload->thread_num; \
     const int64_t ti = payload->thread_idx; \
     const int64_t outer_count = x->numel / dim_size; \
-    if (outer_count <= 0) return; \
+    if (outer_count <= 0) return MAG_STATUS_OK; \
     const int64_t stride_x_dim = x->coords.strides[dim]; \
     const int64_t stride_v_dim = v->coords.strides[dim]; \
     const int64_t outer_rank = R - 1; \
@@ -346,7 +347,7 @@ mag_gen_stub_tri_mask(int64_t, int64, u, 0, >=)
             const int64_t previ = best_idx[ins - 1]; \
             bool better; \
             if (largest) better = (xvc > prevc) || ((xvc == prevc) && (p < previ)); \
-            else         better = (xvc < prevc) || ((xvc == prevc) && (p < previ)); \
+            else better = (xvc < prevc) || ((xvc == prevc) && (p < previ)); \
             if (!better) break; \
             best_vals[ins] = best_vals[ins - 1]; \
             best_idx[ins] = best_idx[ins - 1]; \
@@ -390,6 +391,7 @@ mag_gen_stub_tri_mask(int64_t, int64, u, 0, >=)
       } \
       mag_scratch_arena_reset(&mag_tls_arena, mark); \
     } \
+    return MAG_STATUS_OK; \
   }
 
 mag_gen_stub_topk(float, float32, mag_cvt_nop)
@@ -407,7 +409,8 @@ mag_gen_stub_topk(int64_t, int64, mag_cvt_nop)
 #undef mag_gen_stub_topk
 
 #define mag_gen_stub_where(T, TF) \
-  static void MAG_HOTPROC mag_where_##TF(const mag_kernel_payload_t *payload) { \
+  static mag_status_t MAG_HOTPROC mag_where_##TF(mag_error_t *err, const mag_kernel_payload_t *payload) { \
+    (void)err; \
     mag_tensor_t *r = mag_cmd_out(0); \
     const mag_tensor_t *cond = mag_cmd_in(0); \
     const mag_tensor_t *x = mag_cmd_in(1); \
@@ -437,6 +440,7 @@ mag_gen_stub_topk(int64_t, int64, mag_cvt_nop)
       mag_bnd_chk(br+ri, br, mag_tensor_numbytes(r)); \
       br[ri] = bc[ci] ? bx[xi] : by[yi]; \
     } \
+    return MAG_STATUS_OK; \
   }
 
 mag_gen_stub_where(float, float32)
@@ -465,7 +469,8 @@ static int mag_discrete_sample_pair_cmp(const void *a, const void *b) {
 }
 
 #define mag_gen_stub_multinomial(T, TF, CVT) \
-  static void MAG_HOTPROC mag_multinomial_##TF(const mag_kernel_payload_t *payload) { \
+  static mag_status_t MAG_HOTPROC mag_multinomial_##TF(mag_error_t *err,const mag_kernel_payload_t *payload) { \
+    (void)err; \
     mag_tensor_t *r = mag_cmd_out(0); \
     const mag_tensor_t *x = mag_cmd_in(0); \
     mag_assert2(r->dtype == MAG_DTYPE_INT64); \
@@ -474,7 +479,7 @@ static int mag_discrete_sample_pair_cmp(const void *a, const void *b) {
     int64_t num_samples = mag_op_attr_unwrap_int64(mag_cmd_attr(0)); \
     mag_philox4x32_stream_t *rng = payload->prng; \
     int64_t K = x->coords.shape[x->coords.rank-1]; \
-    if (mag_unlikely(K <= 0)) return; \
+    if (mag_unlikely(K <= 0)) return MAG_STATUS_OK; \
     int64_t B = x->numel / K; \
     int64_t tc = payload->thread_num; \
     int64_t ti = payload->thread_idx; \
@@ -519,6 +524,7 @@ static int mag_discrete_sample_pair_cmp(const void *a, const void *b) {
       for (int64_t s=k; s < num_samples; ++s) o[s] = -1; \
       mag_scratch_arena_reset(&mag_tls_arena, mark); \
     } \
+    return MAG_STATUS_OK; \
   }
 
 mag_gen_stub_multinomial(float, float32, mag_cvt_nop)

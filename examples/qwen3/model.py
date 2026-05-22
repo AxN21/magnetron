@@ -88,9 +88,9 @@ class MLP(nn.Module):
         super().__init__()
         self.hidden_size: int = config.hidden_size
         self.inter_size: int = config.intermediate_size
-        self.gate_proj = nn.Linear(self.hidden_size, self.inter_size, bias=False, dtype=dtype.bfloat16, init=False)
-        self.up_proj = nn.Linear(self.hidden_size, self.inter_size, bias=False, dtype=dtype.bfloat16, init=False)
-        self.down_proj = nn.Linear(self.inter_size, self.hidden_size, bias=False, dtype=dtype.bfloat16, init=False)
+        self.gate_proj = nn.Linear(self.hidden_size, self.inter_size, bias=False, init=False)
+        self.up_proj = nn.Linear(self.hidden_size, self.inter_size, bias=False, init=False)
+        self.down_proj = nn.Linear(self.inter_size, self.hidden_size, bias=False, init=False)
 
     def forward(self, x: Tensor) -> Tensor:
         return self.down_proj(self.gate_proj(x).silu() * self.up_proj(x))
@@ -111,10 +111,10 @@ def _repeat_kv(x: Tensor, n_rep: int) -> Tensor:
 def _precompute_freq_cache(dim: int, theta: float, max_seq_len: int) -> tuple[Tensor, Tensor]:
     inv_freq = (theta ** -(Tensor.arange(0, dim, 2, dtype=dtype.float32) / dim)).reshape(1, -1)
     freqs = Tensor.arange(stop=max_seq_len, dtype=dtype.float32).reshape(max_seq_len, 1) * inv_freq
-    cos_half = Tensor.cos(freqs)
-    sin_half = Tensor.sin(freqs)
-    cos = Tensor.cat([cos_half, cos_half], dim=-1).cast(dtype.bfloat16)
-    sin = Tensor.cat([sin_half, sin_half], dim=-1).cast(dtype.bfloat16)
+    cos_half = freqs.cos()
+    sin_half = freqs.sin()
+    cos = Tensor.cat([cos_half, cos_half], dim=-1).cast(context.get_default_dtype())
+    sin = Tensor.cat([sin_half, sin_half], dim=-1).cast(context.get_default_dtype())
     return cos, sin
 
 
@@ -143,12 +143,12 @@ class SlidingWindowAttention(nn.Module):
         self.num_kv_heads = config.num_key_value_heads
         self.n_rep = self.num_heads // self.num_kv_heads
         self.sliding_window = config.sliding_window
-        self.q_proj = nn.Linear(config.hidden_size, self.num_heads * self.head_dim, bias=False, dtype=dtype.bfloat16, init=False)
-        self.k_proj = nn.Linear(config.hidden_size, self.num_kv_heads * self.head_dim, bias=False, dtype=dtype.bfloat16, init=False)
-        self.v_proj = nn.Linear(config.hidden_size, self.num_kv_heads * self.head_dim, bias=False, dtype=dtype.bfloat16, init=False)
-        self.o_proj = nn.Linear(self.num_heads * self.head_dim, config.hidden_size, bias=False, dtype=dtype.bfloat16, init=False)
-        self.q_norm = nn.RMSNorm(self.head_dim, eps=config.rms_norm_eps, dtype=dtype.bfloat16, init=False)
-        self.k_norm = nn.RMSNorm(self.head_dim, eps=config.rms_norm_eps, dtype=dtype.bfloat16, init=False)
+        self.q_proj = nn.Linear(config.hidden_size, self.num_heads * self.head_dim, bias=False, init=False)
+        self.k_proj = nn.Linear(config.hidden_size, self.num_kv_heads * self.head_dim, bias=False, init=False)
+        self.v_proj = nn.Linear(config.hidden_size, self.num_kv_heads * self.head_dim, bias=False, init=False)
+        self.o_proj = nn.Linear(self.num_heads * self.head_dim, config.hidden_size, bias=False, init=False)
+        self.q_norm = nn.RMSNorm(self.head_dim, eps=config.rms_norm_eps, init=False)
+        self.k_norm = nn.RMSNorm(self.head_dim, eps=config.rms_norm_eps, init=False)
 
     def forward(self, x: Tensor, cos_freq: Tensor, sin_freq: Tensor, idx: Tensor, cache: KVLayerCache | None = None) -> Tensor:
         B, T, _ = x.shape
@@ -180,8 +180,8 @@ class Block(nn.Module):
         super().__init__()
         self.self_attn = SlidingWindowAttention(config)
         self.mlp = MLP(config)
-        self.input_layernorm = nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps, init=False, dtype=dtype.bfloat16)
-        self.post_attention_layernorm = nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps, init=False, dtype=dtype.bfloat16)
+        self.input_layernorm = nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps, init=False)
+        self.post_attention_layernorm = nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps, init=False)
 
     def forward(self, x: Tensor, freq_cos: Tensor, freq_sin: Tensor, idx: Tensor, cache: KVLayerCache | None = None) -> Tensor:
         h = x + self.self_attn(
@@ -198,10 +198,10 @@ class Qwen3Model(nn.Module):
     def __init__(self, config: Qwen3HyperParams) -> None:
         super().__init__()
         self.config = config
-        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, init=False, dtype=dtype.bfloat16)
+        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, init=False)
         self.layers = nn.ModuleList([Block(config) for _ in range(config.num_hidden_layers)])
-        self.norm = nn.RMSNorm(config.hidden_size, config.rms_norm_eps, init=False, dtype=dtype.bfloat16)
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False, dtype=dtype.bfloat16, init=False)
+        self.norm = nn.RMSNorm(config.hidden_size, config.rms_norm_eps, init=False)
+        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False, init=False)
         if config.tie_word_embeddings:
             self.lm_head.weight = self.embed_tokens.weight
         cos_cache, sin_cache = _precompute_freq_cache(config.head_dim, config.rope_theta, config.max_position_embeddings)
@@ -265,10 +265,10 @@ class Qwen3Model(nn.Module):
         self.cache.clear()
 
         idx = idx.reshape(1, -1)
-        in_len: int = idx.shape[1]
-        logits = self(idx, idx=Tensor.arange(stop=in_len).reshape(1, -1))
+        idl: int = idx.shape[1]
+        logits = self(idx, idx=Tensor.arange(stop=idl).reshape(1, -1))
         next_logits: Tensor = logits[:, -1, :] / temp
-        curr_len: int = in_len
+        curr_len: int = idl
         pending: list[int] = []
 
         for _ in range(max_tokens):
