@@ -18,6 +18,12 @@ typedef void (mag_vcast_fn_t)(int64_t numel, void *restrict dst, const void *res
 #define mag_cast_fn_bfloat16_to_float32_upcast(TDst, x) ((TDst)mag_bfloat16_to_float32(x))
 #define mag_cast_fn_float16_to_bfloat16(TDst, x) (mag_float32_to_bfloat16(mag_float16_to_float32(x)))
 #define mag_cast_fn_bfloat16_to_float16(TDst, x) (mag_float32_to_float16(mag_bfloat16_to_float32(x)))
+#define mag_cast_fn_float32_to_float8_e4m3fn(TDst, x) (mag_float32_to_float8_e4m3fn(x))
+#define mag_cast_fn_float8_e4m3fn_to_float32_upcast(TDst, x) ((TDst)mag_float8_e4m3fn_to_float32(x))
+#define mag_cast_fn_float16_to_float8_e4m3fn(TDst, x) (mag_float32_to_float8_e4m3fn(mag_float16_to_float32(x)))
+#define mag_cast_fn_float8_e4m3fn_to_float16(TDst, x) (mag_float32_to_float16(mag_float8_e4m3fn_to_float32(x)))
+#define mag_cast_fn_bfloat16_to_float8_e4m3fn(TDst, x) (mag_float32_to_float8_e4m3fn(mag_bfloat16_to_float32(x)))
+#define mag_cast_fn_float8_e4m3fn_to_bfloat16(TDst, x) (mag_float32_to_bfloat16(mag_float8_e4m3fn_to_float32(x)))
 
 #define mag_gen_vcast(TSrc, TDst, F) \
   static void MAG_HOTPROC mag_vcast_##TSrc##_to_##TDst(int64_t numel, void *restrict dst, const void *restrict src) { \
@@ -52,6 +58,14 @@ static void MAG_HOTPROC mag_vcast_mag_bfloat16_t_to_boolean(int64_t numel, void 
     o[i] = (uint8_t)(mag_bfloat16_to_float32(x[i]) != 0.0f);
 }
 
+static void MAG_HOTPROC mag_vcast_mag_float8_e4m3fn_t_to_boolean(int64_t numel, void *restrict dst, const void *restrict src) {
+  uint8_t *restrict o = dst;
+  const mag_float8_e4m3fn_t *restrict x = src;
+  for (int64_t i=0; i < numel; ++i)
+    o[i] = (uint8_t)(mag_float8_e4m3fn_to_float32(x[i]) != 0.0f);
+}
+
+
 mag_gen_vcast_to_bool_arith(uint8_t);
 mag_gen_vcast_to_bool_arith(int8_t);
 mag_gen_vcast_to_bool_arith(uint16_t);
@@ -66,6 +80,7 @@ mag_gen_vcast_to_bool_arith(int64_t);
 mag_gen_vcast(float, float, mag_cast_fn_builtin)
 /*mag_gen_vcast(float, mag_float16_t, mag_cast_fn_float32_to_float16) - There is a SIMD fast path function for this cast below */
 mag_gen_vcast(float, mag_bfloat16_t, mag_cast_fn_float32_to_bfloat16)
+mag_gen_vcast(float, mag_float8_e4m3fn_t, mag_cast_fn_float32_to_float8_e4m3fn)
 mag_gen_vcast(float, uint8_t, mag_cast_fn_builtin)
 mag_gen_vcast(float, int8_t, mag_cast_fn_builtin)
 mag_gen_vcast(float, uint16_t, mag_cast_fn_builtin)
@@ -78,6 +93,7 @@ mag_gen_vcast(float, int64_t, mag_cast_fn_builtin)
 /*mag_gen_vcast(mag_float16_t, float, mag_cast_fn_float16_to_float32_upcast)  - There is a SIMD fast path function for this cast below */
 mag_gen_vcast(mag_float16_t, mag_bfloat16_t, mag_cast_fn_float16_to_bfloat16)
 mag_gen_vcast(mag_float16_t, mag_float16_t, mag_cast_fn_builtin)
+mag_gen_vcast(mag_float16_t, mag_float8_e4m3fn_t, mag_cast_fn_float16_to_float8_e4m3fn)
 mag_gen_vcast(mag_float16_t, uint8_t, mag_cast_fn_float16_to_float32_upcast)
 mag_gen_vcast(mag_float16_t, int8_t, mag_cast_fn_float16_to_float32_upcast)
 mag_gen_vcast(mag_float16_t, uint16_t, mag_cast_fn_float16_to_float32_upcast)
@@ -90,6 +106,7 @@ mag_gen_vcast(mag_float16_t, int64_t, mag_cast_fn_float16_to_float32_upcast)
 mag_gen_vcast(mag_bfloat16_t, float, mag_cast_fn_bfloat16_to_float32_upcast)
 mag_gen_vcast(mag_bfloat16_t, mag_bfloat16_t, mag_cast_fn_builtin)
 mag_gen_vcast(mag_bfloat16_t, mag_float16_t, mag_cast_fn_bfloat16_to_float16)
+mag_gen_vcast(mag_bfloat16_t, mag_float8_e4m3fn_t, mag_cast_fn_bfloat16_to_float8_e4m3fn)
 mag_gen_vcast(mag_bfloat16_t, uint8_t, mag_cast_fn_bfloat16_to_float32_upcast)
 mag_gen_vcast(mag_bfloat16_t, int8_t, mag_cast_fn_bfloat16_to_float32_upcast)
 mag_gen_vcast(mag_bfloat16_t, uint16_t, mag_cast_fn_bfloat16_to_float32_upcast)
@@ -99,9 +116,23 @@ mag_gen_vcast(mag_bfloat16_t, int32_t, mag_cast_fn_bfloat16_to_float32_upcast)
 mag_gen_vcast(mag_bfloat16_t, uint64_t, mag_cast_fn_bfloat16_to_float32_upcast)
 mag_gen_vcast(mag_bfloat16_t, int64_t, mag_cast_fn_bfloat16_to_float32_upcast)
 
+mag_gen_vcast(mag_float8_e4m3fn_t, float, mag_cast_fn_float8_e4m3fn_to_float32_upcast)
+mag_gen_vcast(mag_float8_e4m3fn_t, mag_bfloat16_t, mag_cast_fn_float8_e4m3fn_to_bfloat16)
+mag_gen_vcast(mag_float8_e4m3fn_t, mag_float16_t, mag_cast_fn_float8_e4m3fn_to_float16)
+mag_gen_vcast(mag_float8_e4m3fn_t, mag_float8_e4m3fn_t, mag_cast_fn_builtin)
+mag_gen_vcast(mag_float8_e4m3fn_t, uint8_t, mag_cast_fn_float8_e4m3fn_to_float32_upcast)
+mag_gen_vcast(mag_float8_e4m3fn_t, int8_t, mag_cast_fn_float8_e4m3fn_to_float32_upcast)
+mag_gen_vcast(mag_float8_e4m3fn_t, uint16_t, mag_cast_fn_float8_e4m3fn_to_float32_upcast)
+mag_gen_vcast(mag_float8_e4m3fn_t, int16_t, mag_cast_fn_float8_e4m3fn_to_float32_upcast)
+mag_gen_vcast(mag_float8_e4m3fn_t, uint32_t, mag_cast_fn_float8_e4m3fn_to_float32_upcast)
+mag_gen_vcast(mag_float8_e4m3fn_t, int32_t, mag_cast_fn_float8_e4m3fn_to_float32_upcast)
+mag_gen_vcast(mag_float8_e4m3fn_t, uint64_t, mag_cast_fn_float8_e4m3fn_to_float32_upcast)
+mag_gen_vcast(mag_float8_e4m3fn_t, int64_t, mag_cast_fn_float8_e4m3fn_to_float32_upcast)
+
 mag_gen_vcast(uint8_t, float, mag_cast_fn_builtin)
 mag_gen_vcast(uint8_t, mag_float16_t, mag_cast_fn_float32_to_float16)
 mag_gen_vcast(uint8_t, mag_bfloat16_t, mag_cast_fn_float32_to_bfloat16)
+mag_gen_vcast(uint8_t, mag_float8_e4m3fn_t, mag_cast_fn_float32_to_float8_e4m3fn)
 mag_gen_vcast(uint8_t, uint8_t, mag_cast_fn_builtin)
 mag_gen_vcast(uint8_t, int8_t, mag_cast_fn_builtin)
 mag_gen_vcast(uint8_t, uint16_t, mag_cast_fn_builtin)
@@ -114,6 +145,7 @@ mag_gen_vcast(uint8_t, int64_t, mag_cast_fn_builtin)
 mag_gen_vcast(int8_t, float, mag_cast_fn_builtin)
 mag_gen_vcast(int8_t, mag_float16_t, mag_cast_fn_float32_to_float16)
 mag_gen_vcast(int8_t, mag_bfloat16_t, mag_cast_fn_float32_to_bfloat16)
+mag_gen_vcast(int8_t, mag_float8_e4m3fn_t, mag_cast_fn_float32_to_float8_e4m3fn)
 mag_gen_vcast(int8_t, uint8_t, mag_cast_fn_builtin)
 mag_gen_vcast(int8_t, int8_t, mag_cast_fn_builtin)
 mag_gen_vcast(int8_t, uint16_t, mag_cast_fn_builtin)
@@ -126,6 +158,7 @@ mag_gen_vcast(int8_t, int64_t, mag_cast_fn_builtin)
 mag_gen_vcast(uint16_t, float, mag_cast_fn_builtin)
 mag_gen_vcast(uint16_t, mag_float16_t, mag_cast_fn_float32_to_float16)
 mag_gen_vcast(uint16_t, mag_bfloat16_t, mag_cast_fn_float32_to_bfloat16)
+mag_gen_vcast(uint16_t, mag_float8_e4m3fn_t, mag_cast_fn_float32_to_float8_e4m3fn)
 mag_gen_vcast(uint16_t, uint8_t, mag_cast_fn_builtin)
 mag_gen_vcast(uint16_t, int8_t, mag_cast_fn_builtin)
 mag_gen_vcast(uint16_t, uint16_t, mag_cast_fn_builtin)
@@ -138,6 +171,7 @@ mag_gen_vcast(uint16_t, int64_t, mag_cast_fn_builtin)
 mag_gen_vcast(int16_t, float, mag_cast_fn_builtin)
 mag_gen_vcast(int16_t, mag_float16_t, mag_cast_fn_float32_to_float16)
 mag_gen_vcast(int16_t, mag_bfloat16_t, mag_cast_fn_float32_to_bfloat16)
+mag_gen_vcast(int16_t, mag_float8_e4m3fn_t, mag_cast_fn_float32_to_float8_e4m3fn)
 mag_gen_vcast(int16_t, uint8_t, mag_cast_fn_builtin)
 mag_gen_vcast(int16_t, int8_t, mag_cast_fn_builtin)
 mag_gen_vcast(int16_t, uint16_t, mag_cast_fn_builtin)
@@ -150,6 +184,7 @@ mag_gen_vcast(int16_t, int64_t, mag_cast_fn_builtin)
 mag_gen_vcast(uint32_t, float, mag_cast_fn_builtin)
 mag_gen_vcast(uint32_t, mag_float16_t, mag_cast_fn_float32_to_float16)
 mag_gen_vcast(uint32_t, mag_bfloat16_t, mag_cast_fn_float32_to_bfloat16)
+mag_gen_vcast(uint32_t, mag_float8_e4m3fn_t, mag_cast_fn_float32_to_float8_e4m3fn)
 mag_gen_vcast(uint32_t, uint8_t, mag_cast_fn_builtin)
 mag_gen_vcast(uint32_t, int8_t, mag_cast_fn_builtin)
 mag_gen_vcast(uint32_t, uint16_t, mag_cast_fn_builtin)
@@ -162,6 +197,7 @@ mag_gen_vcast(uint32_t, int64_t, mag_cast_fn_builtin)
 mag_gen_vcast(int32_t, float, mag_cast_fn_builtin)
 mag_gen_vcast(int32_t, mag_float16_t, mag_cast_fn_float32_to_float16)
 mag_gen_vcast(int32_t, mag_bfloat16_t, mag_cast_fn_float32_to_bfloat16)
+mag_gen_vcast(int32_t, mag_float8_e4m3fn_t, mag_cast_fn_float32_to_float8_e4m3fn)
 mag_gen_vcast(int32_t, uint8_t, mag_cast_fn_builtin)
 mag_gen_vcast(int32_t, int8_t, mag_cast_fn_builtin)
 mag_gen_vcast(int32_t, uint16_t, mag_cast_fn_builtin)
@@ -174,6 +210,7 @@ mag_gen_vcast(int32_t, int64_t, mag_cast_fn_builtin)
 mag_gen_vcast(uint64_t, float, mag_cast_fn_builtin)
 mag_gen_vcast(uint64_t, mag_float16_t, mag_cast_fn_float32_to_float16)
 mag_gen_vcast(uint64_t, mag_bfloat16_t, mag_cast_fn_float32_to_bfloat16)
+mag_gen_vcast(uint64_t, mag_float8_e4m3fn_t, mag_cast_fn_float32_to_float8_e4m3fn)
 mag_gen_vcast(uint64_t, uint8_t, mag_cast_fn_builtin)
 mag_gen_vcast(uint64_t, int8_t, mag_cast_fn_builtin)
 mag_gen_vcast(uint64_t, uint16_t, mag_cast_fn_builtin)
@@ -186,6 +223,7 @@ mag_gen_vcast(uint64_t, int64_t, mag_cast_fn_builtin)
 mag_gen_vcast(int64_t, float, mag_cast_fn_builtin)
 mag_gen_vcast(int64_t, mag_float16_t, mag_cast_fn_float32_to_float16)
 mag_gen_vcast(int64_t, mag_bfloat16_t, mag_cast_fn_float32_to_bfloat16)
+mag_gen_vcast(int64_t, mag_float8_e4m3fn_t, mag_cast_fn_float32_to_float8_e4m3fn)
 mag_gen_vcast(int64_t, uint8_t, mag_cast_fn_builtin)
 mag_gen_vcast(int64_t, int8_t, mag_cast_fn_builtin)
 mag_gen_vcast(int64_t, uint16_t, mag_cast_fn_builtin)
@@ -269,6 +307,7 @@ static mag_vcast_fn_t *const mag_cast_table_2D[MAG_DTYPE__NUM][MAG_DTYPE__NUM] =
     [MAG_DTYPE_FLOAT32] = mag_vcast_float_to_float,
     [MAG_DTYPE_FLOAT16] = mag_vcast_float_to_mag_float16_t,
     [MAG_DTYPE_BFLOAT16] = mag_vcast_float_to_mag_bfloat16_t,
+    [MAG_DTYPE_FLOAT8_E4M3FN] = mag_vcast_float_to_mag_float8_e4m3fn_t,
     [MAG_DTYPE_BOOLEAN] = mag_vcast_float_to_boolean,
     [MAG_DTYPE_UINT8] = mag_vcast_float_to_uint8_t,
     [MAG_DTYPE_INT8] = mag_vcast_float_to_int8_t,
@@ -283,6 +322,7 @@ static mag_vcast_fn_t *const mag_cast_table_2D[MAG_DTYPE__NUM][MAG_DTYPE__NUM] =
     [MAG_DTYPE_FLOAT32] = mag_vcast_mag_float16_t_to_float,
     [MAG_DTYPE_FLOAT16] = mag_vcast_mag_float16_t_to_mag_float16_t,
     [MAG_DTYPE_BFLOAT16] = mag_vcast_mag_float16_t_to_mag_bfloat16_t,
+    [MAG_DTYPE_FLOAT8_E4M3FN] = mag_vcast_mag_float16_t_to_mag_float8_e4m3fn_t,
     [MAG_DTYPE_BOOLEAN] = mag_vcast_mag_float16_t_to_boolean,
     [MAG_DTYPE_UINT8] = mag_vcast_mag_float16_t_to_uint8_t,
     [MAG_DTYPE_INT8] = mag_vcast_mag_float16_t_to_int8_t,
@@ -297,6 +337,7 @@ static mag_vcast_fn_t *const mag_cast_table_2D[MAG_DTYPE__NUM][MAG_DTYPE__NUM] =
     [MAG_DTYPE_FLOAT32] = mag_vcast_mag_bfloat16_t_to_float,
     [MAG_DTYPE_FLOAT16] = mag_vcast_mag_bfloat16_t_to_mag_float16_t,
     [MAG_DTYPE_BFLOAT16] = mag_vcast_mag_bfloat16_t_to_mag_bfloat16_t,
+    [MAG_DTYPE_FLOAT8_E4M3FN] = mag_vcast_mag_bfloat16_t_to_mag_float8_e4m3fn_t,
     [MAG_DTYPE_BOOLEAN] = mag_vcast_mag_bfloat16_t_to_boolean,
     [MAG_DTYPE_UINT8] = mag_vcast_mag_bfloat16_t_to_uint8_t,
     [MAG_DTYPE_INT8] = mag_vcast_mag_bfloat16_t_to_int8_t,
@@ -307,10 +348,25 @@ static mag_vcast_fn_t *const mag_cast_table_2D[MAG_DTYPE__NUM][MAG_DTYPE__NUM] =
     [MAG_DTYPE_UINT64] = mag_vcast_mag_bfloat16_t_to_uint64_t,
     [MAG_DTYPE_INT64] = mag_vcast_mag_bfloat16_t_to_int64_t,
   },
+  [MAG_DTYPE_FLOAT8_E4M3FN] = {
+    [MAG_DTYPE_FLOAT32] = mag_vcast_mag_float8_e4m3fn_t_to_float,
+    [MAG_DTYPE_FLOAT16] = mag_vcast_mag_float8_e4m3fn_t_to_mag_float16_t,
+    [MAG_DTYPE_BFLOAT16] = mag_vcast_mag_float8_e4m3fn_t_to_mag_bfloat16_t,
+    [MAG_DTYPE_BOOLEAN] = mag_vcast_mag_float8_e4m3fn_t_to_boolean,
+    [MAG_DTYPE_UINT8] = mag_vcast_mag_float8_e4m3fn_t_to_uint8_t,
+    [MAG_DTYPE_INT8] = mag_vcast_mag_float8_e4m3fn_t_to_int8_t,
+    [MAG_DTYPE_UINT16] = mag_vcast_mag_float8_e4m3fn_t_to_uint16_t,
+    [MAG_DTYPE_INT16] = mag_vcast_mag_float8_e4m3fn_t_to_int16_t,
+    [MAG_DTYPE_UINT32] = mag_vcast_mag_float8_e4m3fn_t_to_uint32_t,
+    [MAG_DTYPE_INT32] = mag_vcast_mag_float8_e4m3fn_t_to_int32_t,
+    [MAG_DTYPE_UINT64] = mag_vcast_mag_float8_e4m3fn_t_to_uint64_t,
+    [MAG_DTYPE_INT64] = mag_vcast_mag_float8_e4m3fn_t_to_int64_t,
+  },
   [MAG_DTYPE_BOOLEAN] = {
     [MAG_DTYPE_FLOAT32] = mag_vcast_uint8_t_to_float,
     [MAG_DTYPE_FLOAT16] = mag_vcast_uint8_t_to_mag_float16_t,
     [MAG_DTYPE_BFLOAT16] = mag_vcast_uint8_t_to_mag_bfloat16_t,
+    [MAG_DTYPE_FLOAT8_E4M3FN] = mag_vcast_uint8_t_to_mag_float8_e4m3fn_t,
     [MAG_DTYPE_BOOLEAN] = mag_vcast_uint8_t_to_boolean,
     [MAG_DTYPE_UINT8] = mag_vcast_uint8_t_to_uint8_t,
     [MAG_DTYPE_INT8] = mag_vcast_uint8_t_to_int8_t,
@@ -325,6 +381,7 @@ static mag_vcast_fn_t *const mag_cast_table_2D[MAG_DTYPE__NUM][MAG_DTYPE__NUM] =
     [MAG_DTYPE_FLOAT32] = mag_vcast_uint8_t_to_float,
     [MAG_DTYPE_FLOAT16] = mag_vcast_uint8_t_to_mag_float16_t,
     [MAG_DTYPE_BFLOAT16] = mag_vcast_uint8_t_to_mag_bfloat16_t,
+    [MAG_DTYPE_FLOAT8_E4M3FN] = mag_vcast_uint8_t_to_mag_float8_e4m3fn_t,
     [MAG_DTYPE_BOOLEAN] = mag_vcast_uint8_t_to_boolean,
     [MAG_DTYPE_UINT8] = mag_vcast_uint8_t_to_uint8_t,
     [MAG_DTYPE_INT8] = mag_vcast_uint8_t_to_int8_t,
@@ -339,6 +396,7 @@ static mag_vcast_fn_t *const mag_cast_table_2D[MAG_DTYPE__NUM][MAG_DTYPE__NUM] =
     [MAG_DTYPE_FLOAT32] = mag_vcast_int8_t_to_float,
     [MAG_DTYPE_FLOAT16] = mag_vcast_int8_t_to_mag_float16_t,
     [MAG_DTYPE_BFLOAT16] = mag_vcast_int8_t_to_mag_bfloat16_t,
+    [MAG_DTYPE_FLOAT8_E4M3FN] = mag_vcast_int8_t_to_mag_float8_e4m3fn_t,
     [MAG_DTYPE_BOOLEAN] = mag_vcast_int8_t_to_boolean,
     [MAG_DTYPE_UINT8] = mag_vcast_int8_t_to_uint8_t,
     [MAG_DTYPE_INT8] = mag_vcast_int8_t_to_int8_t,
@@ -353,6 +411,7 @@ static mag_vcast_fn_t *const mag_cast_table_2D[MAG_DTYPE__NUM][MAG_DTYPE__NUM] =
     [MAG_DTYPE_FLOAT32] = mag_vcast_uint16_t_to_float,
     [MAG_DTYPE_FLOAT16] = mag_vcast_uint16_t_to_mag_float16_t,
     [MAG_DTYPE_BFLOAT16] = mag_vcast_uint16_t_to_mag_bfloat16_t,
+    [MAG_DTYPE_FLOAT8_E4M3FN] = mag_vcast_uint16_t_to_mag_float8_e4m3fn_t,
     [MAG_DTYPE_BOOLEAN] = mag_vcast_uint16_t_to_boolean,
     [MAG_DTYPE_UINT8] = mag_vcast_uint16_t_to_uint8_t,
     [MAG_DTYPE_INT8] = mag_vcast_uint16_t_to_int8_t,
@@ -367,6 +426,7 @@ static mag_vcast_fn_t *const mag_cast_table_2D[MAG_DTYPE__NUM][MAG_DTYPE__NUM] =
     [MAG_DTYPE_FLOAT32] = mag_vcast_int16_t_to_float,
     [MAG_DTYPE_FLOAT16] = mag_vcast_int16_t_to_mag_float16_t,
     [MAG_DTYPE_BFLOAT16] = mag_vcast_int16_t_to_mag_bfloat16_t,
+    [MAG_DTYPE_FLOAT8_E4M3FN] = mag_vcast_int16_t_to_mag_float8_e4m3fn_t,
     [MAG_DTYPE_BOOLEAN] = mag_vcast_int16_t_to_boolean,
     [MAG_DTYPE_UINT8] = mag_vcast_int16_t_to_uint8_t,
     [MAG_DTYPE_INT8] = mag_vcast_int16_t_to_int8_t,
@@ -381,6 +441,7 @@ static mag_vcast_fn_t *const mag_cast_table_2D[MAG_DTYPE__NUM][MAG_DTYPE__NUM] =
     [MAG_DTYPE_FLOAT32] = mag_vcast_uint32_t_to_float,
     [MAG_DTYPE_FLOAT16] = mag_vcast_uint32_t_to_mag_float16_t,
     [MAG_DTYPE_BFLOAT16] = mag_vcast_uint32_t_to_mag_bfloat16_t,
+    [MAG_DTYPE_FLOAT8_E4M3FN] = mag_vcast_uint32_t_to_mag_float8_e4m3fn_t,
     [MAG_DTYPE_BOOLEAN] = mag_vcast_uint32_t_to_boolean,
     [MAG_DTYPE_UINT8] = mag_vcast_uint32_t_to_uint8_t,
     [MAG_DTYPE_INT8] = mag_vcast_uint32_t_to_int8_t,
@@ -395,6 +456,7 @@ static mag_vcast_fn_t *const mag_cast_table_2D[MAG_DTYPE__NUM][MAG_DTYPE__NUM] =
     [MAG_DTYPE_FLOAT32] = mag_vcast_int32_t_to_float,
     [MAG_DTYPE_FLOAT16] = mag_vcast_int32_t_to_mag_float16_t,
     [MAG_DTYPE_BFLOAT16] = mag_vcast_int32_t_to_mag_bfloat16_t,
+    [MAG_DTYPE_FLOAT8_E4M3FN] = mag_vcast_int32_t_to_mag_float8_e4m3fn_t,
     [MAG_DTYPE_BOOLEAN] = mag_vcast_int32_t_to_boolean,
     [MAG_DTYPE_UINT8] = mag_vcast_int32_t_to_uint8_t,
     [MAG_DTYPE_INT8] = mag_vcast_int32_t_to_int8_t,
@@ -409,6 +471,7 @@ static mag_vcast_fn_t *const mag_cast_table_2D[MAG_DTYPE__NUM][MAG_DTYPE__NUM] =
     [MAG_DTYPE_FLOAT32] = mag_vcast_uint64_t_to_float,
     [MAG_DTYPE_FLOAT16] = mag_vcast_uint64_t_to_mag_float16_t,
     [MAG_DTYPE_BFLOAT16] = mag_vcast_uint64_t_to_mag_bfloat16_t,
+    [MAG_DTYPE_FLOAT8_E4M3FN] = mag_vcast_uint64_t_to_mag_float8_e4m3fn_t,
     [MAG_DTYPE_BOOLEAN] = mag_vcast_uint64_t_to_boolean,
     [MAG_DTYPE_UINT8] = mag_vcast_uint64_t_to_uint8_t,
     [MAG_DTYPE_INT8] = mag_vcast_uint64_t_to_int8_t,
@@ -423,6 +486,7 @@ static mag_vcast_fn_t *const mag_cast_table_2D[MAG_DTYPE__NUM][MAG_DTYPE__NUM] =
     [MAG_DTYPE_FLOAT32] = mag_vcast_int64_t_to_float,
     [MAG_DTYPE_FLOAT16] = mag_vcast_int64_t_to_mag_float16_t,
     [MAG_DTYPE_BFLOAT16] = mag_vcast_int64_t_to_mag_bfloat16_t,
+    [MAG_DTYPE_FLOAT8_E4M3FN] = mag_vcast_int64_t_to_mag_float8_e4m3fn_t,
     [MAG_DTYPE_BOOLEAN] = mag_vcast_int64_t_to_boolean,
     [MAG_DTYPE_UINT8] = mag_vcast_int64_t_to_uint8_t,
     [MAG_DTYPE_INT8] = mag_vcast_int64_t_to_int8_t,

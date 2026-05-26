@@ -76,12 +76,12 @@ class InferenceEngine:
         if snapshot is None:
             snapshot = _download_or_ensure_hf_file(
                 repo_id=REPO_ID,
-                filename='qwen3-4b-instruct-2507-bfloat16.mag',
+                filename='qwen3-4b-instruct-2507-f8e4m3fn.mag',
             )
         assert snapshot is not None
         start = time.perf_counter()
         context.stop_grad_recorder()
-        context.set_default_dtype(dtype.bfloat16)
+        context.set_default_dtype(dtype.float8_e4m3fn)
         context.manual_seed(config.seed)
         if context.is_device_available(config.device):
             context.set_default_device(config.device)

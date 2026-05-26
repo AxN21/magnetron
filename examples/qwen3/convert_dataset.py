@@ -24,6 +24,7 @@ def _mag_to_torch_dtype(mag_dtype: dtype.DType) -> torch.dtype:
         dtype.float16: torch.float16,
         dtype.bfloat16: torch.bfloat16,
         dtype.float32: torch.float32,
+        dtype.float8_e4m3fn: torch.float8_e4m3fn
     }[mag_dtype]
 
 
@@ -32,6 +33,7 @@ def _mag_dtype_from_str(dtype_str: str) -> dtype.DType:
         'float16': dtype.float16,
         'bfloat16': dtype.bfloat16,
         'float32': dtype.float32,
+        'float8_e4m3fn': dtype.float8_e4m3fn
     }[dtype_str]
 
 
@@ -73,7 +75,7 @@ def _convert_model(repo: str, torch_dtype: torch.dtype, mag_dtype: dtype.DType) 
             return mag_key
         return 'model.' + mag_key
 
-    snap_file = f'{repo.split("/")[1].lower()}-{mag_dtype.name}.mag'
+    snap_file = f'{repo.split("/")[1].lower()}-{mag_dtype.short_name}.mag'
 
     print(f'Writing snapshot to {snap_file}...')
     with Snapshot.write(snap_file) as snap:
@@ -112,7 +114,7 @@ def _convert_model(repo: str, torch_dtype: torch.dtype, mag_dtype: dtype.DType) 
 def _main() -> None:
     args = argparse.ArgumentParser(description='Convert Hugging Face Qwen model to Magnetron file format')
     args.add_argument('--model', type=str, default='Qwen/Qwen3-4B-Instruct-2507', help='HF repo model name')
-    args.add_argument('--dtype', type=str, default='bfloat16', choices=['float16', 'bfloat16', 'float32'], help='Data type for Magnetron tensors')
+    args.add_argument('--dtype', type=str, default='float8_e4m3fn', choices=['float8_e4m3fn', 'float16', 'bfloat16', 'float32'], help='Data type for Magnetron tensors')
     args = args.parse_args()
     mag_dtype = _mag_dtype_from_str(args.dtype)
     _convert_model(args.model, torch_dtype=_mag_to_torch_dtype(mag_dtype), mag_dtype=mag_dtype)

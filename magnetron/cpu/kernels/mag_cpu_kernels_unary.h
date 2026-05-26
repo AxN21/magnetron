@@ -43,6 +43,7 @@
 mag_gen_stub_clone(float, float32)
 mag_gen_stub_clone(mag_float16_t, float16)
 mag_gen_stub_clone(mag_bfloat16_t, bfloat16)
+mag_gen_stub_clone(mag_float8_e4m3fn_t, float8_e4m3fn)
 mag_gen_stub_clone(uint8_t, uint8)
 mag_gen_stub_clone(int8_t, int8)
 mag_gen_stub_clone(uint16_t, uint16)
@@ -107,7 +108,8 @@ static MAG_AINLINE float mag_fn_gelu_dv_f32(float x) { float t = tanhf(x); retur
 
 #define mag_def_float_wrappers(name) \
   static MAG_AINLINE mag_float16_t mag_fn_##name##_f16(mag_float16_t x) { return mag_float32_to_float16(mag_fn_##name##_f32(mag_float16_to_float32(x))); } \
-  static MAG_AINLINE mag_bfloat16_t mag_fn_##name##_bf16(mag_bfloat16_t x) { return mag_float32_to_bfloat16(mag_fn_##name##_f32(mag_bfloat16_to_float32(x))); }
+  static MAG_AINLINE mag_bfloat16_t mag_fn_##name##_bf16(mag_bfloat16_t x) { return mag_float32_to_bfloat16(mag_fn_##name##_f32(mag_bfloat16_to_float32(x))); } \
+  static MAG_AINLINE mag_float8_e4m3fn_t mag_fn_##name##_f8_e4m3fn(mag_float8_e4m3fn_t x) { return mag_float32_to_float8_e4m3fn(mag_fn_##name##_f32(mag_float8_e4m3fn_to_float32(x))); }
 
 mag_def_float_wrappers(log)
 mag_def_float_wrappers(log10)
@@ -278,12 +280,14 @@ static MAG_AINLINE void mag_vf32_storeu_f32(float *p, mag_vf32_t v) { mag_vf32_s
 #define mag_gen_float_unary_scalar(name) \
   mag_gen_unary_scalar(float, float32, name, f32) \
   mag_gen_unary_scalar(mag_float16_t, float16, name, f16) \
-  mag_gen_unary_scalar(mag_bfloat16_t, bfloat16, name, bf16)
+  mag_gen_unary_scalar(mag_bfloat16_t, bfloat16, name, bf16) \
+  mag_gen_unary_scalar(mag_float8_e4m3fn_t, float8_e4m3fn, name, f8_e4m3fn)
 
 #define mag_gen_float_unary_simd(name) \
   mag_gen_unary_simd(float, float32, f32, mag_vf32_loadu_f32, mag_vf32_storeu_f32, name) \
   mag_gen_unary_simd(mag_float16_t, float16, f16, mag_vf32_loadu_f16, mag_vf32_storeu_f16, name) \
-  mag_gen_unary_simd(mag_bfloat16_t, bfloat16, bf16, mag_vf32_loadu_bf16, mag_vf32_storeu_bf16, name)
+  mag_gen_unary_simd(mag_bfloat16_t, bfloat16, bf16, mag_vf32_loadu_bf16, mag_vf32_storeu_bf16, name) \
+  mag_gen_unary_simd(mag_float8_e4m3fn_t, float8_e4m3fn, f8_e4m3fn, mag_vf32_loadu_float8_e4m3fn, mag_vf32_storeu_float8_e4m3fn, name)
 
 mag_gen_float_unary_simd(log)
 mag_gen_float_unary_scalar(log10)
@@ -454,6 +458,16 @@ mag_gen_softmax_simd(
   mag_vf32_storeu_bf16,
   mag_bfloat16_to_float32,
   mag_float32_to_bfloat16
+)
+
+mag_gen_softmax_simd(
+  mag_float8_e4m3fn_t,
+  float8_e4m3fn,
+  MAG_FLOAT8_E4M3FN_ONE,
+  mag_vf32_loadu_float8_e4m3fn,
+  mag_vf32_storeu_float8_e4m3fn,
+  mag_float8_e4m3fn_to_float32,
+  mag_float32_to_float8_e4m3fn
 )
 
 #undef mag_f32_id

@@ -26,6 +26,7 @@ namespace mag::bindings {
     if (arr.dtype() == nb::dtype<float>()) return MAG_DTYPE_FLOAT32;
     if (arr.dtype() == nb::dtype<mag_float16_t>()) return MAG_DTYPE_FLOAT16;
     if (arr.dtype() == nb::dtype<mag_bfloat16_t>()) return MAG_DTYPE_BFLOAT16;
+    if (arr.dtype() == nb::dtype<mag_float8_e4m3fn_t>()) return MAG_DTYPE_FLOAT8_E4M3FN;
     if (arr.dtype() == nb::dtype<bool>()) return MAG_DTYPE_BOOLEAN;
     if (arr.dtype() == nb::dtype<uint8_t>()) return MAG_DTYPE_UINT8;
     if (arr.dtype() == nb::dtype<int8_t>()) return MAG_DTYPE_INT8;
@@ -100,8 +101,15 @@ namespace mag::bindings {
         copy = nb::cast<bool>(kwargs["copy"]);
       auto arr = nb::cast<nb::ndarray<nb::c_contig, nb::device::cpu>>(handle);
       mag_dtype_t elem_dtype = ndarray_dtype_to_mag_dtype(arr);
-      if (elem_dtype == MAG_DTYPE__NUM)
-        throw nb::type_error("Tensor() from array: unsupported dtype. Supported: float16, bfloat16, float32, bool, uint8, int8, uint16, int16, uint32, int32, uint64, int64");
+      if (elem_dtype == MAG_DTYPE__NUM) {
+        std::stringstream types {};
+        for (std::underlying_type_t<mag_dtype_t> type=0; type < MAG_DTYPE__NUM; ++type) {
+          types << mag_type_trait(static_cast<mag_dtype_t>(type))->name;
+          if (type != MAG_DTYPE__NUM-1) types << ", ";
+        }
+        std::string msg = "Tensor() from array: unsupported dtype. Supported: " + types.str();
+        throw nb::type_error(msg.c_str());
+      }
       mag_dtype_t target_dtype = dtype.v != MAG_DTYPE__NUM ? dtype.v : elem_dtype;
       std::vector<int64_t> shape {};
       shape.reserve(arr.ndim());

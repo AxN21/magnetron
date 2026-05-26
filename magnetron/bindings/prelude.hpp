@@ -11,17 +11,18 @@
 
 #pragma once
 
-#include <functional>
 #include <exception>
+#include <functional>
 #include <mutex>
-#include <string>
-#include <vector>
 #include <optional>
 #include <sstream>
+#include <string>
+#include <vector>
 
 #include <magnetron/magnetron.h>
 #include <core/mag_bfloat16.h>
 #include <core/mag_float16.h>
+#include <core/mag_float8_e4m3fn.h>
 
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
@@ -128,20 +129,28 @@ namespace mag::bindings {
 }
 
 namespace nanobind::detail { // Specialization for magnetron's half precision types
-template <> struct dtype_traits<mag_float16_t> {
-  static constexpr dlpack::dtype value {
-    static_cast<uint8_t>(dlpack::dtype_code::Float),
-    16,
-    1
+  template <> struct dtype_traits<mag_float16_t> {
+    static constexpr dlpack::dtype value {
+      static_cast<uint8_t>(dlpack::dtype_code::Float),
+      16,
+      1
+    };
+    static constexpr auto name = const_name("float16");
   };
-  static constexpr auto name = const_name("float16");
-};
-template <> struct dtype_traits<mag_bfloat16_t> {
-  static constexpr dlpack::dtype value {
-    static_cast<uint8_t>(dlpack::dtype_code::Bfloat),
-    16,
-    1
+  template <> struct dtype_traits<mag_bfloat16_t> {
+    static constexpr dlpack::dtype value {
+      static_cast<uint8_t>(dlpack::dtype_code::Bfloat),
+      16,
+      1
+    };
+    static constexpr auto name = const_name("bfloat16");
   };
-  static constexpr auto name = const_name("bfloat16");
-};
+  template <> struct dtype_traits<mag_float8_e4m3fn_t> {
+    static constexpr dlpack::dtype value {
+      static_cast<uint8_t>(dlpack::dtype_code::Float8_E4M3FN),
+      8,
+      1
+    };
+    static constexpr auto name = const_name("float8_e4m3fn");
+  };
 }

@@ -19,7 +19,8 @@ static MAG_AINLINE float mag_fn_pow_f32(float x, float y) { return powf(x,y); }
 
 #define mag_def_float_bin_wrappers(name) \
   static MAG_AINLINE mag_float16_t mag_fn_##name##_f16(mag_float16_t x, mag_float16_t y) { return mag_float32_to_float16(mag_fn_##name##_f32(mag_float16_to_float32(x), mag_float16_to_float32(y))); } \
-  static MAG_AINLINE mag_bfloat16_t mag_fn_##name##_bf16(mag_bfloat16_t x, mag_bfloat16_t y) { return mag_float32_to_bfloat16(mag_fn_##name##_f32(mag_bfloat16_to_float32(x), mag_bfloat16_to_float32(y))); }
+  static MAG_AINLINE mag_bfloat16_t mag_fn_##name##_bf16(mag_bfloat16_t x, mag_bfloat16_t y) { return mag_float32_to_bfloat16(mag_fn_##name##_f32(mag_bfloat16_to_float32(x), mag_bfloat16_to_float32(y))); } \
+  static MAG_AINLINE mag_float8_e4m3fn_t mag_fn_##name##_f8_e4m3fn(mag_float8_e4m3fn_t x, mag_float8_e4m3fn_t y) { return mag_float32_to_float8_e4m3fn(mag_fn_##name##_f32(mag_float8_e4m3fn_to_float32(x), mag_float8_e4m3fn_to_float32(y))); }
 
 mag_def_float_bin_wrappers(add)
 mag_def_float_bin_wrappers(sub)
@@ -128,12 +129,14 @@ static MAG_AINLINE mag_vf32_t mag_vec_div_f32(mag_vf32_t x, mag_vf32_t y) { retu
 #define mag_gen_float_bin_scalar(name) \
   mag_gen_bin_scalar(float,float32,name,f32) \
   mag_gen_bin_scalar(mag_float16_t,float16,name,f16) \
-  mag_gen_bin_scalar(mag_bfloat16_t,bfloat16,name,bf16)
+  mag_gen_bin_scalar(mag_bfloat16_t,bfloat16,name,bf16) \
+  mag_gen_bin_scalar(mag_float8_e4m3fn_t,float8_e4m3fn,name,f8_e4m3fn)
 
 #define mag_gen_float_bin_simd(name) \
   mag_gen_bin_simd(float,float32,f32,mag_vf32_loadu_f32,mag_vf32_storeu_f32,name) \
   mag_gen_bin_simd(mag_float16_t,float16,f16,mag_vf32_loadu_f16,mag_vf32_storeu_f16,name) \
-  mag_gen_bin_simd(mag_bfloat16_t,bfloat16,bf16,mag_vf32_loadu_bf16,mag_vf32_storeu_bf16,name)
+  mag_gen_bin_simd(mag_bfloat16_t,bfloat16,bf16,mag_vf32_loadu_bf16,mag_vf32_storeu_bf16,name) \
+  mag_gen_bin_simd(mag_float8_e4m3fn_t,float8_e4m3fn,f8_e4m3fn,mag_vf32_loadu_float8_e4m3fn,mag_vf32_storeu_float8_e4m3fn,name)
 
 mag_gen_float_bin_simd(add)
 mag_gen_float_bin_simd(sub)
@@ -258,6 +261,7 @@ mag_gen_shift_all(shr)
   mag_gen_cmp(float,float32,name,OP,mag_cvt_nop) \
   mag_gen_cmp(mag_float16_t,float16,name,OP,mag_float16_to_float32) \
   mag_gen_cmp(mag_bfloat16_t,bfloat16,name,OP,mag_bfloat16_to_float32) \
+  mag_gen_cmp(mag_float8_e4m3fn_t,float8_e4m3fn,name,OP,mag_float8_e4m3fn_to_float32) \
   mag_gen_cmp(uint8_t,uint8,name,OP,mag_cvt_nop) \
   mag_gen_cmp(int8_t,int8,name,OP,mag_cvt_nop) \
   mag_gen_cmp(uint16_t,uint16,name,OP,mag_cvt_nop) \

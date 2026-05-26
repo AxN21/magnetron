@@ -1106,6 +1106,19 @@ static MAG_AINLINE void mag_vf32_storeu_bf16(mag_bfloat16_t *p, mag_vf32_t v) {
   #endif
 }
 
+static MAG_AINLINE mag_vf32_t mag_vf32_loadu_float8_e4m3fn(const mag_float8_e4m3fn_t *p) {
+  mag_vf32_t r;
+  for (int i=0; i < MAG_VF32_LANES; ++i)
+    ((float *)&r)[i] = mag_float8_e4m3fn_to_float32(p[i]);
+  return r;
+}
+
+static MAG_AINLINE void mag_vf32_storeu_float8_e4m3fn(mag_float8_e4m3fn_t *p, mag_vf32_t v) {
+  for (int i=0; i < MAG_VF32_LANES; ++i) {
+    p[i] = mag_float32_to_float8_e4m3fn(((const float*)&v)[i]);
+  }
+}
+
 /* i32 vector */
 static MAG_AINLINE mag_vi32_t mag_vi32_zero(void) {
   #if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
