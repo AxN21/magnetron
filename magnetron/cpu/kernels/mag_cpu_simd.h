@@ -1108,6 +1108,14 @@ static MAG_AINLINE void mag_vf32_storeu_bf16(mag_bfloat16_t *p, mag_vf32_t v) {
 
 static MAG_AINLINE mag_vf32_t mag_vf32_loadu_float8_e4m3fn(const mag_float8_e4m3fn_t *p) {
   #if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+    uint32x4_t x = vmovl_u16(vget_low_u16(vmovl_u8(vld1_u8((const uint8_t *)p))));
+    uint32x4_t sign = vshlq_n_u32(vandq_u32(x, vdupq_n_u32(0x80)), 24);
+    uint32x4_t abs = vandq_u32(x, vdupq_n_u32(0x7f));
+    uint32x4_t exp = vshrq_n_u32(abs, 3);
+    uint32x4_t mant = vandq_u32(abs, vdupq_n_u32(0x07));
+    uint32x4_t norm = vorrq_u32(sign, vorrq_u32(vshlq_n_u32(vaddq_u32(exp, vdupq_n_u32(120)), 23), vshlq_n_u32(mant, 20)));
+    uint32x4_t sub_bits = vorrq_u32(vreinterpretq_u32_f32(vmulq_f32(vcvtq_f32_u32(mant), vdupq_n_f32(0x1p-9f))), sign);
+    return vreinterpretq_f32_u32(vbslq_u32(vceqq_u32(abs, vdupq_n_u32(0)), sign, vbslq_u32(vmvnq_u32(vceqq_u32(exp, vdupq_n_u32(0))), norm, sub_bits)));
   #elif defined(__AVX512F__) && defined(__AVX512BF16__)
     __m512i x = _mm512_cvtepu8_epi32(_mm_loadu_si128((const __m128i *)p));
     __m512i sign = _mm512_slli_epi32(_mm512_and_si512(x, _mm512_set1_epi32(0x80)), 24);
@@ -1129,6 +1137,18 @@ static MAG_AINLINE mag_vf32_t mag_vf32_loadu_float8_e4m3fn(const mag_float8_e4m3
 
 static MAG_AINLINE void mag_vf32_storeu_float8_e4m3fn(mag_float8_e4m3fn_t *p, mag_vf32_t v) {
   #if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+    uint32x4_t b = vreinterpretq_u32_f32(v);
+    uint32x4_t sign = vandq_u32(b, vdupq_n_u32(0x80000000u));
+    uint32x4_t abs = veorq_u32(b, sign);
+    float32x4_t denorm_f = vaddq_f32(vreinterpretq_f32_u32(abs), vreinterpretq_f32_u32(vdupq_n_u32(0x46800000u)));
+    uint32x4_t norm_r = vminq_u32(vshrq_n_u32(vaddq_u32(vaddq_u32(abs, vdupq_n_u32(-1006108673)), vandq_u32(vshrq_n_u32(abs, 20), vdupq_n_u32(1))), 20), vdupq_n_u32(0x7e));
+    uint32x4_t sat_r = vbslq_u32(vcgtq_u32(abs, vdupq_n_u32(0x7f800000u)), vdupq_n_u32(0x7f), vdupq_n_u32(0x7e));
+    norm_r = vbslq_u32(vcltq_u32(abs, vdupq_n_u32(0x3c800000u)),  vsubq_u32(vreinterpretq_u32_f32(denorm_f), vdupq_n_u32(0x46800000u)), norm_r);
+    norm_r = vbslq_u32(vcgeq_u32(abs, vdupq_n_u32(0x43f00000u)), sat_r, norm_r);
+    uint32x4_t r = vorrq_u32(norm_r, vshrq_n_u32(sign, 24));
+    uint16x4_t r16 = vmovn_u32(r);
+    uint8x8_t r8 = vmovn_u16(vcombine_u16(r16, vdup_n_u16(0)));
+    vst1_lane_u32((uint32_t *)p, vreinterpret_u32_u8(r8), 0);
   #elif defined(__AVX512F__) && defined(__AVX512BF16__)
     __m512i b = _mm512_castps_si512(v);
     __m512i sign = _mm512_and_si512(b, _mm512_set1_epi32(0x80000000u));
@@ -1136,7 +1156,7 @@ static MAG_AINLINE void mag_vf32_storeu_float8_e4m3fn(mag_float8_e4m3fn_t *p, ma
     __m512 denorm_f = _mm512_add_ps(_mm512_castsi512_ps(abs), _mm512_castsi512_ps(_mm512_set1_epi32(0x46800000u)));
     __m512i denorm_r = _mm512_sub_epi32(_mm512_castps_si512(denorm_f), _mm512_set1_epi32(0x46800000u));
     __m512i mant_lsb = _mm512_and_si512(_mm512_srli_epi32(abs, 20), _mm512_set1_epi32(1));
-    __m512i nb = _mm512_add_epi32(abs, _mm512_set1_epi32(((7-127)<<23)+0x7ffff));
+    __m512i nb = _mm512_add_epi32(abs, _mm512_set1_epi32(-1006108673));
     __m512i norm_r = _mm512_min_epu32(_mm512_srli_epi32(_mm512_add_epi32(nb, mant_lsb), 20), _mm512_set1_epi32(0x7e));
     __m512i sat_r = _mm512_mask_blend_epi32(
       _mm512_cmpgt_epu32_mask(abs, _mm512_set1_epi32(0x7f800000u)),
