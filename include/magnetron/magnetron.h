@@ -288,8 +288,8 @@ extern MAG_EXPORT mag_status_t mag_movedim(mag_error_t *err, mag_tensor_t **out_
 extern MAG_EXPORT mag_status_t mag_select(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, int64_t dim, int64_t index);
 extern MAG_EXPORT mag_status_t mag_split(mag_error_t *err, mag_tensor_t **outs, int64_t num_splits, mag_tensor_t *x, int64_t split_size, int64_t dim);
 extern MAG_EXPORT mag_status_t mag_mean(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, const int64_t *dims, int64_t rank, bool keepdim);
-extern MAG_EXPORT mag_status_t mag_min(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, const int64_t *dims, int64_t rank, bool keepdim);
-extern MAG_EXPORT mag_status_t mag_max(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, const int64_t *dims, int64_t rank, bool keepdim);
+extern MAG_EXPORT mag_status_t mag_minima(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, const int64_t *dims, int64_t rank, bool keepdim);
+extern MAG_EXPORT mag_status_t mag_maxima(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, const int64_t *dims, int64_t rank, bool keepdim);
 extern MAG_EXPORT mag_status_t mag_argmin(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, const int64_t *dims, int64_t rank, bool keepdim);
 extern MAG_EXPORT mag_status_t mag_argmax(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, const int64_t *dims, int64_t rank, bool keepdim);
 extern MAG_EXPORT mag_status_t mag_sum(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, const int64_t *dims, int64_t rank, bool keepdim);
@@ -425,7 +425,10 @@ extern MAG_EXPORT mag_status_t mag_le(mag_error_t *err, mag_tensor_t **out_resul
 extern MAG_EXPORT mag_status_t mag_ge(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, mag_tensor_t *y);
 extern MAG_EXPORT mag_status_t mag_lt(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, mag_tensor_t *y);
 extern MAG_EXPORT mag_status_t mag_gt(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, mag_tensor_t *y);
+extern MAG_EXPORT mag_status_t mag_min(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, mag_tensor_t *y);
+extern MAG_EXPORT mag_status_t mag_max(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, mag_tensor_t *y);
 extern MAG_EXPORT mag_status_t mag_where(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *cond, mag_tensor_t *x, mag_tensor_t *y);
+extern MAG_EXPORT mag_status_t mag_clamp(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, mag_tensor_t *min, mag_tensor_t *max);
 extern MAG_EXPORT mag_status_t mag_tril(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *tensor, int32_t diag);
 extern MAG_EXPORT mag_status_t mag_tril_(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *tensor, int32_t diag);
 extern MAG_EXPORT mag_status_t mag_triu(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *tensor, int32_t diag);

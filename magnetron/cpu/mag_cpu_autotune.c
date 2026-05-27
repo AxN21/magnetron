@@ -137,7 +137,7 @@ void mag_mm_autotune_block_params(const mag_matmul_block_tune_info_t *info, mag_
   int64_t W = VW >= 64 ? 64 : VW >= 32 ? 32 : 16;
   MR = VW / info->elsize;
   int64_t NR_cap = W == 64 ? 32 : W == 32 ? 32 : 16;
-  NR = mag_clamp((MR)<<1, MR, NR_cap);
+  NR = mag_xclamp((MR)<<1, MR, NR_cap);
   if (W == 64) MR = 16, NR = 32;
   double aL1 = info->l1_load_factor ? info->l1_load_factor : W == 64 ? 0.55 : W == 32 ? 0.60 : 0.65;
   double aL2 = info->l2_load_factor ? info->l2_load_factor : W == 64 ? 0.40 : W == 32 ? 0.45 : 0.50;
@@ -155,21 +155,21 @@ void mag_mm_autotune_block_params(const mag_matmul_block_tune_info_t *info, mag_
   /* bf16/f16 (elsize==2): allow larger KC to amortize B packing, especially when B is strided */
   if (info->elsize == 2 && W == 64) {
     KC_hi = 2048;
-    if (K >= 512) kc = mag_clamp(kc + 256, KC_lo, KC_hi);
-    if (K >= 2048) kc = mag_clamp(kc + 256, KC_lo, KC_hi);
-    if (K >= 4096) kc = mag_clamp(kc + 128, KC_lo, KC_hi);
+    if (K >= 512) kc = mag_xclamp(kc + 256, KC_lo, KC_hi);
+    if (K >= 2048) kc = mag_xclamp(kc + 256, KC_lo, KC_hi);
+    if (K >= 4096) kc = mag_xclamp(kc + 128, KC_lo, KC_hi);
   } else if (info->elsize == 2 && W == 32) {
     KC_hi = 896;
-    if (K >= 1024) kc = mag_clamp(kc + 128, KC_lo, KC_hi);
+    if (K >= 1024) kc = mag_xclamp(kc + 128, KC_lo, KC_hi);
   } else if (info->elsize == 2 && W == 16) {
     /* ARM64 NEON: larger KC to amortize pack, match AVX-512-style tuning for LLM shapes */
     KC_hi = 1536;
-    if (K >= 512) kc = mag_clamp(kc + 192, KC_lo, KC_hi);
-    if (K >= 2048) kc = mag_clamp(kc + 192, KC_lo, KC_hi);
-    if (K >= 4096) kc = mag_clamp(kc + 128, KC_lo, KC_hi);
+    if (K >= 512) kc = mag_xclamp(kc + 192, KC_lo, KC_hi);
+    if (K >= 2048) kc = mag_xclamp(kc + 192, KC_lo, KC_hi);
+    if (K >= 4096) kc = mag_xclamp(kc + 128, KC_lo, KC_hi);
   }
-  kc = mag_clamp(kc, KC_lo, KC_hi);
-  if (K >= 2048 && info->elsize != 2) kc = mag_clamp(kc + 128, KC_lo, KC_hi);
+  kc = mag_xclamp(kc, KC_lo, KC_hi);
+  if (K >= 2048 && info->elsize != 2) kc = mag_xclamp(kc + 128, KC_lo, KC_hi);
   KC = kc;
   int64_t MC = (int64_t)(info->split_a*L2e / (nb*(double)KC));
   int64_t NC = (int64_t)((1.0-info->split_a)*L2e / (nb*(double)KC));

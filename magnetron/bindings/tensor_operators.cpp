@@ -419,29 +419,41 @@ namespace mag::bindings {
       "dim"_a = nb::none(), "keepdim"_a = false,
       "Mean over dim(s). None = all dims."
     )
-    .def("min",
-      [](const tensor_wrapper &self, nb::handle dim = nb::none(), bool keepdim = false) -> tensor_wrapper {
-        std::lock_guard lock {get_global_mutex()};
-        auto ax = parse_reduction_axes(dim);
-        mag_tensor_t *out = nullptr;
-        mag_error_t err {};
-        throw_if_error(mag_min(&err, &out, *self, ax.ptr, ax.rank, keepdim), err);
-        return tensor_wrapper{out};
-      },
-      "dim"_a = nb::none(), "keepdim"_a = false,
-      "Minimum over dim(s). None = all dims."
-    )
     .def("max",
-      [](const tensor_wrapper &self, nb::handle dim = nb::none(), bool keepdim = false) -> tensor_wrapper {
-        std::lock_guard lock {get_global_mutex()};
-        auto ax = parse_reduction_axes(dim);
+      [](const tensor_wrapper &self, nb::handle arg = nb::none(), bool keepdim = false) -> tensor_wrapper {
+        std::lock_guard lock{get_global_mutex()};
         mag_tensor_t *out = nullptr;
-        mag_error_t err {};
-        throw_if_error(mag_max(&err, &out, *self, ax.ptr, ax.rank, keepdim), err);
+        mag_error_t err{};
+        if (!arg.is_none() && nb::isinstance<tensor_wrapper>(arg)) {
+          auto rhs = nb::cast<tensor_wrapper>(arg);
+          throw_if_error(mag_max(&err, &out, *self, *rhs), err);
+          return tensor_wrapper{out};
+        }
+        auto ax = parse_reduction_axes(arg);
+        throw_if_error(mag_maxima(&err, &out, *self, ax.ptr, ax.rank, keepdim), err);
         return tensor_wrapper{out};
       },
-      "dim"_a = nb::none(), "keepdim"_a = false,
-      "Maximum over dim(s). None = all dims."
+      "dim_or_other"_a = nb::none(),
+      "keepdim"_a = false,
+      "Elementwise maximum with another tensor, or reduction maximum over dim(s)."
+    )
+    .def("min",
+      [](const tensor_wrapper &self, nb::handle arg = nb::none(), bool keepdim = false) -> tensor_wrapper {
+        std::lock_guard lock{get_global_mutex()};
+        mag_tensor_t *out = nullptr;
+        mag_error_t err{};
+        if (!arg.is_none() && nb::isinstance<tensor_wrapper>(arg)) {
+          auto rhs = nb::cast<tensor_wrapper>(arg);
+          throw_if_error(mag_min(&err, &out, *self, *rhs), err);
+          return tensor_wrapper{out};
+        }
+        auto ax = parse_reduction_axes(arg);
+        throw_if_error(mag_minima(&err, &out, *self, ax.ptr, ax.rank, keepdim), err);
+        return tensor_wrapper{out};
+      },
+      "dim_or_other"_a = nb::none(),
+      "keepdim"_a = false,
+      "Elementwise minimum with another tensor, or reduction minimum over dim(s)."
     )
     .def("argmin",
       [](const tensor_wrapper &self, nb::handle dim = nb::none(), bool keepdim = false) -> tensor_wrapper {
@@ -546,17 +558,6 @@ namespace mag::bindings {
       "diagonal"_a = 0,
       "Lower triangular part; elements above diagonal set to 0."
     )
-    .def("tril_",
-      [](tensor_wrapper &self, int32_t diagonal = 0) -> tensor_wrapper {
-        std::lock_guard lock {get_global_mutex()};
-        mag_tensor_t *out = nullptr;
-        mag_error_t err {};
-        throw_if_error(mag_tril_(&err, &out, *self, diagonal), err);
-        return tensor_wrapper {out};
-      },
-      "diagonal"_a = 0,
-      "In-place lower triangular."
-    )
     .def("triu",
       [](const tensor_wrapper &self, int32_t diagonal = 0) -> tensor_wrapper {
         std::lock_guard lock {get_global_mutex()};
@@ -568,16 +569,33 @@ namespace mag::bindings {
       "diagonal"_a = 0,
       "Upper triangular part; elements below diagonal set to 0."
     )
-    .def("triu_",
-      [](tensor_wrapper &self, int32_t diagonal = 0) -> tensor_wrapper {
+    .def("tril_",
+    [](tensor_wrapper &self, int32_t diagonal = 0) -> tensor_wrapper& {
+      std::lock_guard lock {get_global_mutex()};
+      mag_tensor_t *out = nullptr;
+      mag_error_t err {};
+      throw_if_error(mag_tril_(&err, &out, *self, diagonal), err);
+      if (self.p) mag_tensor_decref(self.p);
+      self.p = out;
+      return self;
+    },
+    "diagonal"_a = 0,
+    "In-place lower triangular.",
+    nb::rv_policy::reference
+  )
+  .def("triu_",
+      [](tensor_wrapper &self, int32_t diagonal = 0) -> tensor_wrapper& {
         std::lock_guard lock {get_global_mutex()};
         mag_tensor_t *out = nullptr;
         mag_error_t err {};
         throw_if_error(mag_triu_(&err, &out, *self, diagonal), err);
-        return tensor_wrapper {out};
+        if (self.p) mag_tensor_decref(self.p);
+        self.p = out;
+        return self;
       },
       "diagonal"_a = 0,
-      "In-place upper triangular."
+      "In-place upper triangular.",
+      nb::rv_policy::reference
     )
     .def("multinomial",
       [](const tensor_wrapper &self, int64_t num_samples = 1, bool replacement = false) -> tensor_wrapper {
@@ -615,6 +633,20 @@ namespace mag::bindings {
       },
       "dim"_a = 0,
       "index"_a
+    )
+    .def("clamp",
+      [](const tensor_wrapper &self, nb::handle min_h, nb::handle max_h) -> tensor_wrapper {
+        std::lock_guard lock{get_global_mutex()};
+        tensor_wrapper min = normalize_rhs_to_tensor(self, min_h);
+        tensor_wrapper max = normalize_rhs_to_tensor(self, max_h);
+        mag_tensor_t *out = nullptr;
+        mag_error_t err{};
+        throw_if_error(mag_clamp(&err, &out, *self, *min, *max), err);
+        return tensor_wrapper{out};
+      },
+      "min"_a,
+      "max"_a,
+      "Clamp tensor values elementwise into the interval [min, max]."
     );
 
     cls.attr("cat") = nb::cpp_function(

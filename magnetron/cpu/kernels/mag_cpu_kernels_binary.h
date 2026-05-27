@@ -16,6 +16,8 @@ static MAG_AINLINE float mag_fn_div_f32(float x, float y) { return x/y; }
 static MAG_AINLINE float mag_fn_floordiv_f32(float x, float y) { return floorf(x/y); }
 static MAG_AINLINE float mag_fn_mod_f32(float x, float y) { return mag_remf(x,y); }
 static MAG_AINLINE float mag_fn_pow_f32(float x, float y) { return powf(x,y); }
+static MAG_AINLINE float mag_fn_min_f32(float x, float y) { return fminf(x,y); }
+static MAG_AINLINE float mag_fn_max_f32(float x, float y) { return fmaxf(x,y); }
 
 #define mag_def_float_bin_wrappers(name) \
   static MAG_AINLINE mag_float16_t mag_fn_##name##_f16(mag_float16_t x, mag_float16_t y) { return mag_float32_to_float16(mag_fn_##name##_f32(mag_float16_to_float32(x), mag_float16_to_float32(y))); } \
@@ -29,6 +31,8 @@ mag_def_float_bin_wrappers(div)
 mag_def_float_bin_wrappers(floordiv)
 mag_def_float_bin_wrappers(mod)
 mag_def_float_bin_wrappers(pow)
+mag_def_float_bin_wrappers(min)
+mag_def_float_bin_wrappers(max)
 
 #undef mag_def_float_bin_wrappers
 
@@ -54,6 +58,8 @@ static MAG_AINLINE mag_vf32_t mag_vec_div_f32(mag_vf32_t x, mag_vf32_t y) { retu
 #define mag_fn_shl_u(x,y,T) (mag_unlikely((y)<0 || (y)>=(sizeof(T)<<3)) ? ((x)<0 ? -1 : 0) : (x)>>(y))
 #define mag_fn_shr_i(x,y,T) (mag_unlikely((y)<0 || (y)>=(sizeof(T)<<3)) ? 0 : (x)<<(y))
 #define mag_fn_shr_u(x,y,T) (mag_unlikely((y)<0 || (y)>=(sizeof(T)<<3)) ? 0 : (x)>>(y))
+#define mag_fn_min_int(x,y) ((x)<(y)?(x):(y))
+#define mag_fn_max_int(x,y) ((x)>(y)?(x):(y))
 
 #define mag_gen_bin_scalar(T, TF, name, suffix) \
   static mag_status_t MAG_HOTPROC mag_##name##_##TF(mag_error_t *err, const mag_kernel_payload_t *payload) { \
@@ -145,6 +151,8 @@ mag_gen_float_bin_simd(div)
 mag_gen_float_bin_scalar(floordiv)
 mag_gen_float_bin_scalar(mod)
 mag_gen_float_bin_scalar(pow)
+mag_gen_float_bin_scalar(min)
+mag_gen_float_bin_scalar(max)
 
 #define mag_gen_int_bin_common(name) \
   mag_gen_bin_scalar(uint8_t,uint8,name,int) \
@@ -163,6 +171,8 @@ mag_gen_int_bin_common(div)
 mag_gen_int_bin_common(and)
 mag_gen_int_bin_common(or)
 mag_gen_int_bin_common(xor)
+mag_gen_int_bin_common(min)
+mag_gen_int_bin_common(max)
 
 #define mag_gen_int_signed_unsigned(name) \
   mag_gen_bin_scalar(uint8_t,uint8,name,u) \

@@ -896,12 +896,12 @@ mag_status_t mag_mean(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t 
   return mag_op_stub_reduction(err, out_result, MAG_OP_MEAN, x, dims, rank, keepdim);
 }
 
-mag_status_t mag_min(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, const int64_t *dims, int64_t rank, bool keepdim) {
-  return mag_op_stub_reduction(err, out_result, MAG_OP_MIN, x, dims, rank, keepdim);
+mag_status_t mag_minima(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, const int64_t *dims, int64_t rank, bool keepdim) {
+  return mag_op_stub_reduction(err, out_result, MAG_OP_MINIMA, x, dims, rank, keepdim);
 }
 
-mag_status_t mag_max(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, const int64_t *dims, int64_t rank, bool keepdim) {
-  return mag_op_stub_reduction(err, out_result, MAG_OP_MAX, x, dims, rank, keepdim);
+mag_status_t mag_maxima(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, const int64_t *dims, int64_t rank, bool keepdim) {
+  return mag_op_stub_reduction(err, out_result, MAG_OP_MAXIMA, x, dims, rank, keepdim);
 }
 
 mag_status_t mag_argmin(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, const int64_t *dims, int64_t rank, bool keepdim) {
@@ -1131,7 +1131,7 @@ mag_status_t mag_one_hot(mag_error_t *err, mag_tensor_t **out_result, mag_tensor
   mag_contract(err, ERR_INVALID_PARAM, {},  num_classes >= -1, "one_hot: num_classes must be >= -1; got %" PRIi64,  num_classes);
   if (num_classes == -1) {
     mag_tensor_t *maxv = NULL;
-    mag_try(mag_max(err, &maxv, indices, NULL, 0, false));
+    mag_try(mag_maxima(err, &maxv, indices, NULL, 0, false));
     mag_scalar_t max_scalar;
     mag_try_or(mag_tensor_item(err, maxv, &max_scalar), {
       mag_tensor_decref(maxv);
@@ -1315,6 +1315,14 @@ mag_impl_binary_pair(gt, GT, true)
 
 #undef mag_impl_binary_pair
 
+mag_status_t mag_min(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, mag_tensor_t *y) {
+  return mag_op_stub_binary(err, out_result, MAG_OP_MIN, x, y, 0);
+}
+
+mag_status_t mag_max(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, mag_tensor_t *y) {
+  return mag_op_stub_binary(err, out_result, MAG_OP_MAX, x, y, 0);
+}
+
 mag_status_t mag_where(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *cond, mag_tensor_t *x, mag_tensor_t *y) {
   *out_result = NULL;
   mag_contract(err, ERR_INVALID_PARAM, {}, cond->dtype == MAG_DTYPE_BOOLEAN, "where: condition tensor dtype must be boolean; got %s", mag_type_trait(cond->dtype)->name);
@@ -1339,6 +1347,33 @@ mag_status_t mag_where(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t
   mag_tensor_t *in[3] = {cond, x, y};
   mag_try(mag_check_dtype_and_device_compat(err, MAG_OP_WHERE, in, 0));
   mag_try(mag_dispatch(err, MAG_OP_WHERE, false, NULL, in, sizeof(in)/sizeof(*in), &result, 1));
+  *out_result = result;
+  return MAG_STATUS_OK;
+}
+
+mag_status_t mag_clamp(mag_error_t *err, mag_tensor_t **out_result, mag_tensor_t *x, mag_tensor_t *min, mag_tensor_t *max) {
+  *out_result = NULL;
+  mag_contract(err, ERR_INVALID_PARAM, {}, x->dtype == min->dtype && min->dtype == max->dtype, "clamp: x, min, and max tensors must have the same dtype; got %s, %s, and %s", mag_type_trait(x->dtype)->name, mag_type_trait(min->dtype)->name, mag_type_trait(max->dtype)->name);
+  int64_t dims[MAG_MAX_DIMS];
+  int64_t rank;
+  const mag_coords_t *coords[3] = {&x->coords, &min->coords, &max->coords};
+  if (mag_unlikely(!mag_coords_broadcast_multi_shape(coords, sizeof(coords)/sizeof(*coords), dims, &rank))) {
+    char sc[MAG_FMT_DIM_BUF_SIZE];
+    char sx[MAG_FMT_DIM_BUF_SIZE];
+    char sy[MAG_FMT_DIM_BUF_SIZE];
+    mag_fmt_shape(&sc, &x->coords.shape, x->coords.rank);
+    mag_fmt_shape(&sx, &min->coords.shape, min->coords.rank);
+    mag_fmt_shape(&sy, &max->coords.shape, max->coords.rank);
+    mag_contract(err, ERR_BROADCAST_IMPOSSIBLE, {}, 0,
+      "Cannot broadcast tensors with shapes %s, %s, and %s for operator 'where'.\n"
+      "    Hint: ensure that condition, x, and y are broadcast-compatible.\n",
+      sc, sx, sy);
+  }
+  mag_tensor_t *result = NULL;
+  mag_try(rank ? mag_empty(err, &result, x->ctx, x->dtype, rank, dims, mag_tensor_device_id(x)) : mag_empty_scalar(err, &result, x->ctx, x->dtype, mag_tensor_device_id(x)));
+  mag_tensor_t *in[3] = {x, min, max};
+  mag_try(mag_check_dtype_and_device_compat(err, MAG_OP_CLAMP, in, 0));
+  mag_try(mag_dispatch(err, MAG_OP_CLAMP, false, NULL, in, sizeof(in)/sizeof(*in), &result, 1));
   *out_result = result;
   return MAG_STATUS_OK;
 }

@@ -571,10 +571,10 @@ extern MAG_EXPORT double mag_hpc_clock_elapsed_ms(uint64_t start);
 extern MAG_EXPORT uint64_t mag_cycles(void); /* Get current CPU cycles. */
 
 #define mag_swap(T, a, b) do { T tmp = (a); (a) = (b); (b) = tmp; } while (0)
-#define mag_xmax(x, y) (((x) > (y)) ? (x) : (y))
-#define mag_xmin(x, y) (((x) < (y)) ? (x) : (y))
+#define mag_xmax(x, y) (((x)>(y))?(x):(y))
+#define mag_xmin(x, y) (((x)<(y))?(x):(y))
 #define mag_rd_down(x,m) ((x)/(m) * (m))
-#define mag_clamp(v, lo, hi) ((v) < (lo) ? (lo) : (v) > (hi) ? (hi) : (v))
+#define mag_xclamp(v, lo, hi) ((v) < (lo) ? (lo) : (v) > (hi) ? (hi) : (v))
 
 #define MAG_TAU 6.283185307179586476925286766559005768394338798f /* τ=2π */
 #define MAG_INVSQRT2 0.707106781186547524400844362104849039284835937f /* 1/√2 */

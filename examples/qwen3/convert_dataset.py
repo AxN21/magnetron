@@ -60,9 +60,7 @@ def _quantize(x: Tensor) -> tuple[Tensor, Tensor]:
     fp8max = qtype.max
     scale = 1.0 if amax < 1e-12 or not amax==amax else amax/fp8max
     inv_scale = 1.0/scale if scale != 0.0 else 1.0
-    q = highp * inv_scale
-    q = Tensor.where(q > fp8max, fp8max, Tensor.where(q < -fp8max, -fp8max, q))
-    q = q.cast(qtype)
+    q = (highp*inv_scale).clamp(-fp8max, fp8max).cast(qtype)
     return q, Tensor([scale], dtype=dtype.float32)
 
 def _convert_model(repo: str, torch_dtype: torch.dtype, mag_dtype: dtype.DType) -> None:

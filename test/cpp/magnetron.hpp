@@ -220,12 +220,12 @@ namespace magnetron {
         }
         [[nodiscard]] auto min() const noexcept -> tensor {
             mag_tensor_t *out = nullptr;
-            handle_error(mag_min(&g_error,  &out, m_tensor, nullptr, 0, false));
+            handle_error(mag_minima(&g_error,  &out, m_tensor, nullptr, 0, false));
             return tensor{out};
         }
         [[nodiscard]] auto max() const noexcept -> tensor {
             mag_tensor_t *out = nullptr;
-            handle_error(mag_max(&g_error,  &out, m_tensor, nullptr, 0, false));
+            handle_error(mag_maxima(&g_error,  &out, m_tensor, nullptr, 0, false));
             return tensor{out};
         }
         [[nodiscard]] auto sum() const noexcept -> tensor {   mag_tensor_t *out = nullptr;

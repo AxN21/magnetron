@@ -532,6 +532,89 @@ mag_gen_stub_where(int64_t, int64)
 
 #undef mag_gen_stub_where
 
+#define mag_gen_stub_clamp_cvt(T, TF, CVT, FROMF32) \
+  static mag_status_t MAG_HOTPROC mag_clamp_##TF(mag_error_t *err, const mag_kernel_payload_t *payload) { \
+    (void)err; \
+    mag_tensor_t *r = mag_cmd_out(0); \
+    const mag_tensor_t *x = mag_cmd_in(0); \
+    const mag_tensor_t *mn = mag_cmd_in(1); \
+    const mag_tensor_t *mx = mag_cmd_in(2); \
+    T *br = (T *)mag_tensor_data_ptr_mut(r); \
+    const T *bx = (const T *)mag_tensor_data_ptr(x); \
+    const T *bmn = (const T *)mag_tensor_data_ptr(mn); \
+    const T *bmx = (const T *)mag_tensor_data_ptr(mx); \
+    int64_t tc = payload->thread_num; \
+    int64_t ti = payload->thread_idx; \
+    int64_t total = r->numel; \
+    int64_t chunk = (total + tc - 1) / tc; \
+    int64_t ra = ti * chunk; \
+    int64_t rb = mag_xmin(ra + chunk, total); \
+    mag_coords_iter_t cr, cx, cmn, cmx; \
+    mag_coords_iter_init(&cr, &r->coords); \
+    mag_coords_iter_init(&cx, &x->coords); \
+    mag_coords_iter_init(&cmn, &mn->coords); \
+    mag_coords_iter_init(&cmx, &mx->coords); \
+    for (int64_t i = ra; i < rb; ++i) { \
+      int64_t ri, xi, mni, mxi; \
+      mag_coords_iter_offset4(&cr, &cx, &cmn, &cmx, i, &ri, &xi, &mni, &mxi); \
+      float v = CVT(bx[xi]); \
+      float lo = CVT(bmn[mni]); \
+      float hi = CVT(bmx[mxi]); \
+      float o = v < lo ? lo : (v > hi ? hi : v); \
+      br[ri] = FROMF32(o); \
+    } \
+    return MAG_STATUS_OK; \
+  }
+
+mag_gen_stub_clamp_cvt(float, float32, mag_cvt_nop, mag_cvt_nop)
+mag_gen_stub_clamp_cvt(mag_float16_t, float16, mag_float16_to_float32, mag_float32_to_float16)
+mag_gen_stub_clamp_cvt(mag_bfloat16_t, bfloat16, mag_bfloat16_to_float32, mag_float32_to_bfloat16)
+mag_gen_stub_clamp_cvt(mag_float8_e4m3fn_t, float8_e4m3fn, mag_float8_e4m3fn_to_float32, mag_float32_to_float8_e4m3fn)
+
+#undef mag_gen_stub_clamp_cvt
+
+#define mag_gen_stub_clamp_ord(T, TF) \
+  static mag_status_t MAG_HOTPROC mag_clamp_##TF(mag_error_t *err, const mag_kernel_payload_t *payload) { \
+    (void)err; \
+    mag_tensor_t *r = mag_cmd_out(0); \
+    const mag_tensor_t *x = mag_cmd_in(0); \
+    const mag_tensor_t *mn = mag_cmd_in(1); \
+    const mag_tensor_t *mx = mag_cmd_in(2); \
+    T *br = (T *)mag_tensor_data_ptr_mut(r); \
+    const T *bx = (const T *)mag_tensor_data_ptr(x); \
+    const T *bmn = (const T *)mag_tensor_data_ptr(mn); \
+    const T *bmx = (const T *)mag_tensor_data_ptr(mx); \
+    int64_t tc = payload->thread_num; \
+    int64_t ti = payload->thread_idx; \
+    int64_t total = r->numel; \
+    int64_t chunk = (total + tc - 1) / tc; \
+    int64_t ra = ti * chunk; \
+    int64_t rb = mag_xmin(ra + chunk, total); \
+    mag_coords_iter_t cr, cx, cmn, cmx; \
+    mag_coords_iter_init(&cr, &r->coords); \
+    mag_coords_iter_init(&cx, &x->coords); \
+    mag_coords_iter_init(&cmn, &mn->coords); \
+    mag_coords_iter_init(&cmx, &mx->coords); \
+    for (int64_t i = ra; i < rb; ++i) { \
+      int64_t ri, xi, mni, mxi; \
+      mag_coords_iter_offset4(&cr, &cx, &cmn, &cmx, i, &ri, &xi, &mni, &mxi); \
+      T v = bx[xi]; \
+      T lo = bmn[mni]; \
+      T hi = bmx[mxi]; \
+      br[ri] = v < lo ? lo : (v > hi ? hi : v); \
+    } \
+    return MAG_STATUS_OK; \
+  }
+
+mag_gen_stub_clamp_ord(uint8_t, uint8)
+mag_gen_stub_clamp_ord(int8_t, int8)
+mag_gen_stub_clamp_ord(uint16_t, uint16)
+mag_gen_stub_clamp_ord(int16_t, int16)
+mag_gen_stub_clamp_ord(uint32_t, uint32)
+mag_gen_stub_clamp_ord(int32_t, int32)
+mag_gen_stub_clamp_ord(uint64_t, uint64)
+mag_gen_stub_clamp_ord(int64_t, int64)
+
 typedef struct mag_discrete_sample_pair_t {
   float score;
   int64_t idx;

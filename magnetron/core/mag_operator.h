@@ -45,8 +45,8 @@ typedef enum mag_opflags_t {
   _(TRANSPOSE, 1, 1, ALL, {}, MAG_OP_FLAG_NONE, transpose)__\
   _(PERMUTE, 1, 1, ALL, {}, MAG_OP_FLAG_NONE, NULL)__\
   _(MEAN, 1, 1, FP, {}, MAG_OP_FLAG_NONE, mean)__\
-  _(MIN, 1, 1, NUMERIC, {}, MAG_OP_FLAG_NONE, NULL)__\
-  _(MAX, 1, 1, NUMERIC, {}, MAG_OP_FLAG_NONE, NULL)__\
+  _(MINIMA, 1, 1, NUMERIC, {}, MAG_OP_FLAG_NONE, NULL)__\
+  _(MAXIMA, 1, 1, NUMERIC, {}, MAG_OP_FLAG_NONE, NULL)__\
   _(ARGMIN, 1, 1, NUMERIC, {}, MAG_OP_FLAG_NONE, NULL)__\
   _(ARGMAX, 1, 1, NUMERIC, {}, MAG_OP_FLAG_NONE, NULL)__\
   _(SUM, 1, 1, NUMERIC, {}, MAG_OP_FLAG_NONE, sum)__\
@@ -127,7 +127,10 @@ typedef enum mag_opflags_t {
   _(GE, 2, 1, ALL, {}, MAG_OP_FLAGS_COMMON, NULL)__\
   _(LT, 2, 1, ALL, {}, MAG_OP_FLAGS_COMMON, NULL)__\
   _(GT, 2, 1, ALL, {}, MAG_OP_FLAGS_COMMON, NULL)__\
-  _(WHERE, 3, 1, ALL, {}, MAG_OP_FLAGS_COMMON, NULL)__
+  _(WHERE, 3, 1, ALL, {}, MAG_OP_FLAGS_COMMON, NULL)__\
+  _(MIN, 2, 1, ALL, {}, MAG_OP_FLAGS_COMMON, NULL)__\
+  _(MAX, 2, 1, ALL, {}, MAG_OP_FLAGS_COMMON, NULL)__\
+  _(CLAMP, 3, 1, ALL, {}, MAG_OP_FLAGS_COMMON, NULL)__
 
 /* Standard opcodes, not including initialization operators. */
 typedef enum mag_opcode_t {
@@ -137,7 +140,7 @@ typedef enum mag_opcode_t {
   MAG_OP__NUM
 } mag_opcode_t;
 mag_static_assert(MAG_OP_NOP == 0);
-mag_static_assert(MAG_OP_WHERE+1 == MAG_OP__NUM);
+mag_static_assert(MAG_OP_CLAMP+1 == MAG_OP__NUM);
 mag_static_assert(MAG_OP__NUM <= 0xff); /* Must fit in one byte */
 
 typedef uint16_t mag_dtype_mask_t; /* Bitmask of supported dtypes, 1 bit per dtype. */
