@@ -40,7 +40,7 @@ class Linear(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         w = self.weight.T
-        x = x.matmul(w) if self.is_scaled else x.scaled_matmul(w, self.weight_scale)
+        x = x.scaled_matmul(w, self.weight_scale) if self.is_scaled else x.matmul(w)
         if self.bias is not None:
             x = x + self.bias
         return x

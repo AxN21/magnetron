@@ -40,7 +40,7 @@ static MAG_AINLINE MAG_CUDA_DEVICE mag_float8_e4m3fn_t mag_float8_e4m3fn_from_fl
   uint32_t b;
   memcpy(&b, &x, sizeof(b));
   uint32_t sgn = b&0x80000000u;
-  b ^= sgn;
+  b^=sgn;
   uint8_t r=0;
   if (b >= 0x43f00000u) {
       r = b > 0x7f800000u ? 0x7f : 0x7e;
