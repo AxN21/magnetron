@@ -1116,7 +1116,7 @@ static MAG_AINLINE mag_vf32_t mag_vf32_loadu_float8_e4m3fn(const mag_float8_e4m3
     uint32x4_t norm = vorrq_u32(sign, vorrq_u32(vshlq_n_u32(vaddq_u32(exp, vdupq_n_u32(120)), 23), vshlq_n_u32(mant, 20)));
     uint32x4_t sub_bits = vorrq_u32(vreinterpretq_u32_f32(vmulq_f32(vcvtq_f32_u32(mant), vdupq_n_f32(0x1p-9f))), sign);
     return vreinterpretq_f32_u32(vbslq_u32(vceqq_u32(abs, vdupq_n_u32(0)), sign, vbslq_u32(vmvnq_u32(vceqq_u32(exp, vdupq_n_u32(0))), norm, sub_bits)));
-  #elif defined(__AVX512F__) && defined(__AVX512BF16__)
+  #elif defined(__AVX512F__)
     __m512i x = _mm512_cvtepu8_epi32(_mm_loadu_si128((const __m128i *)p));
     __m512i sign = _mm512_slli_epi32(_mm512_and_si512(x, _mm512_set1_epi32(0x80)), 24);
     __m512i abs = _mm512_and_si512(x, _mm512_set1_epi32(0x7f));
@@ -1127,6 +1127,24 @@ static MAG_AINLINE mag_vf32_t mag_vf32_loadu_float8_e4m3fn(const mag_float8_e4m3
     __m512i bits = _mm512_mask_blend_epi32(_mm512_cmpneq_epi32_mask(exp, _mm512_setzero_si512()), sub_bits, norm);
     bits = _mm512_mask_blend_epi32(_mm512_cmpeq_epi32_mask(abs, _mm512_setzero_si512()), bits, sign);
     return _mm512_castsi512_ps(bits);
+  #elif defined(__AVX2__)
+    __m256i x = _mm256_cvtepu8_epi32(_mm_loadl_epi64((const __m128i *)p));
+    __m256i sign = _mm256_slli_epi32(_mm256_and_si256(x, _mm256_set1_epi32(0x80)), 24);
+    __m256i abs = _mm256_and_si256(x, _mm256_set1_epi32(0x7f));
+    __m256i exp = _mm256_srli_epi32(abs, 3);
+    __m256i mant = _mm256_and_si256(abs, _mm256_set1_epi32(0x07));
+    __m256i norm = _mm256_or_si256(sign, _mm256_or_si256( _mm256_slli_epi32(_mm256_add_epi32(exp, _mm256_set1_epi32(120)), 23), _mm256_slli_epi32(mant, 20)));
+    __m256i sub_bits = _mm256_or_si256(_mm256_castps_si256(_mm256_mul_ps(_mm256_cvtepi32_ps(mant), _mm256_set1_ps(0x1p-9f))), sign);
+    return _mm256_castsi256_ps(_mm256_blendv_epi8(_mm256_blendv_epi8(norm, sub_bits, _mm256_cmpeq_epi32(exp, _mm256_setzero_si256())), sign, _mm256_cmpeq_epi32(abs, _mm256_setzero_si256())));
+  #elif defined(__SSE4_1__)
+    __m128i x = _mm_cvtepu8_epi32(_mm_cvtsi32_si128(*(int32_t *)p));
+    __m128i sign = _mm_slli_epi32(_mm_and_si128(x, _mm_set1_epi32(0x80)), 24);
+    __m128i abs = _mm_and_si128(x, _mm_set1_epi32(0x7f));
+    __m128i exp = _mm_srli_epi32(abs, 3);
+    __m128i mant = _mm_and_si128(abs, _mm_set1_epi32(0x07));
+    __m128i norm = _mm_or_si128(sign, _mm_or_si128( _mm_slli_epi32(_mm_add_epi32(exp, _mm_set1_epi32(120)), 23), _mm_slli_epi32(mant, 20)));
+    __m128i sub_bits = _mm_or_si128(_mm_castps_si128(_mm_mul_ps(_mm_cvtepi32_ps(mant), _mm_set1_ps(0x1p-9f))), sign);
+    return _mm_castsi128_ps(_mm_blendv_epi8(_mm_blendv_epi8(norm, sub_bits, _mm_cmpeq_epi32(exp, _mm_setzero_si128())), sign, _mm_cmpeq_epi32(abs, _mm_setzero_si128())));
   #else
     mag_vf32_t r;
     for (int i=0; i < MAG_VF32_LANES; ++i)
@@ -1149,7 +1167,7 @@ static MAG_AINLINE void mag_vf32_storeu_float8_e4m3fn(mag_float8_e4m3fn_t *p, ma
     uint16x4_t r16 = vmovn_u32(r);
     uint8x8_t r8 = vmovn_u16(vcombine_u16(r16, vdup_n_u16(0)));
     vst1_lane_u32((uint32_t *)p, vreinterpret_u32_u8(r8), 0);
-  #elif defined(__AVX512F__) && defined(__AVX512BF16__)
+  #elif defined(__AVX512F__)
     __m512i b = _mm512_castps_si512(v);
     __m512i sign = _mm512_and_si512(b, _mm512_set1_epi32(0x80000000u));
     __m512i abs = _mm512_xor_si512(b, sign);
@@ -1158,17 +1176,38 @@ static MAG_AINLINE void mag_vf32_storeu_float8_e4m3fn(mag_float8_e4m3fn_t *p, ma
     __m512i mant_lsb = _mm512_and_si512(_mm512_srli_epi32(abs, 20), _mm512_set1_epi32(1));
     __m512i nb = _mm512_add_epi32(abs, _mm512_set1_epi32(-1006108673));
     __m512i norm_r = _mm512_min_epu32(_mm512_srli_epi32(_mm512_add_epi32(nb, mant_lsb), 20), _mm512_set1_epi32(0x7e));
-    __m512i sat_r = _mm512_mask_blend_epi32(
-      _mm512_cmpgt_epu32_mask(abs, _mm512_set1_epi32(0x7f800000u)),
-      _mm512_set1_epi32(0x7e),
-      _mm512_set1_epi32(0x7f)
-    );
+    __m512i sat_r = _mm512_mask_blend_epi32(_mm512_cmpgt_epu32_mask(abs, _mm512_set1_epi32(0x7f800000u)), _mm512_set1_epi32(0x7e), _mm512_set1_epi32(0x7f));
     norm_r = _mm512_mask_blend_epi32(_mm512_cmplt_epu32_mask(abs, _mm512_set1_epi32(0x3c800000u)), norm_r, denorm_r);
     norm_r = _mm512_mask_blend_epi32(_mm512_cmpge_epu32_mask(abs, _mm512_set1_epi32(0x43f00000u)), norm_r, sat_r);
     _mm_storeu_si128((__m128i *)p, _mm512_cvtepi32_epi8(_mm512_or_si512(norm_r, _mm512_srli_epi32(sign, 24))));
+  #elif defined(__AVX2__)
+    __m256i b = _mm256_castps_si256(v);
+    __m256i sign = _mm256_and_si256(b, _mm256_set1_epi32(0x80000000u));
+    __m256i abs = _mm256_xor_si256(b, sign);
+    __m256 denorm_f = _mm256_add_ps(_mm256_castsi256_ps(abs), _mm256_castsi256_ps(_mm256_set1_epi32(0x46800000u)));
+    __m256i denorm_r = _mm256_sub_epi32(_mm256_castps_si256(denorm_f), _mm256_set1_epi32(0x46800000u));
+    __m256i mant_lsb = _mm256_and_si256(_mm256_srli_epi32(abs, 20), _mm256_set1_epi32(1));
+    __m256i nb = _mm256_add_epi32(abs, _mm256_set1_epi32(-1006108673));
+    __m256i norm_r = _mm256_min_epu32(_mm256_srli_epi32(_mm256_add_epi32(nb, mant_lsb), 20), _mm256_set1_epi32(0x7e));
+    __m256i sat_r = _mm256_blendv_epi8(_mm256_set1_epi32(0x7e), _mm256_set1_epi32(0x7f), _mm256_cmpgt_epi32(abs, _mm256_set1_epi32(0x7f800000u)));
+    norm_r = _mm256_blendv_epi8(norm_r, denorm_r, _mm256_cmpgt_epi32(_mm256_set1_epi32(0x3c800000u), abs));
+    norm_r = _mm256_blendv_epi8(norm_r, sat_r, _mm256_cmpgt_epi32(abs, _mm256_set1_epi32(0x43efffffu)));
+    __m256i r32 = _mm256_or_si256(norm_r, _mm256_srli_epi32(sign, 24));
+    _mm_storel_epi64((__m128i *)p, _mm_packus_epi16(_mm_packus_epi32(_mm256_castsi256_si128(r32), _mm256_extracti128_si256(r32, 1)), _mm_setzero_si128()));
+  #elif defined(__SSE4_1__)
+    __m128i b = _mm_castps_si128(v);
+    __m128i sign = _mm_and_si128(b, _mm_set1_epi32((int)0x80000000u));
+    __m128i abs = _mm_xor_si128(b, sign);
+    __m128 denorm_f = _mm_add_ps(_mm_castsi128_ps(abs), _mm_castsi128_ps(_mm_set1_epi32(0x46800000u)));
+    __m128i denorm_r = _mm_sub_epi32(_mm_castps_si128(denorm_f), _mm_set1_epi32(0x46800000u));
+    __m128i mant_lsb = _mm_and_si128(_mm_srli_epi32(abs, 20), _mm_set1_epi32(1));
+    __m128i norm_r = _mm_srli_epi32(_mm_add_epi32(_mm_add_epi32(abs, _mm_set1_epi32(-1006108673)), mant_lsb), 20);
+    norm_r = _mm_blendv_epi8(_mm_min_epu32(norm_r, _mm_set1_epi32(0x7e)), denorm_r, _mm_cmplt_epi32(abs, _mm_set1_epi32(0x3c800000)));
+    norm_r = _mm_blendv_epi8(norm_r, _mm_blendv_epi8(_mm_set1_epi32(0x7e), _mm_set1_epi32(0x7f), _mm_cmpgt_epi32(abs, _mm_set1_epi32(0x7f800000))), _mm_cmpgt_epi32(abs, _mm_set1_epi32(0x43efffff)));
+    *(uint32_t *)p = (uint32_t)_mm_cvtsi128_si32(_mm_packus_epi16(_mm_packus_epi32(_mm_or_si128(norm_r, _mm_srli_epi32(sign, 24)), _mm_setzero_si128()), _mm_setzero_si128()));
   #else
     for (int i=0; i < MAG_VF32_LANES; ++i) {
-      p[i] = mag_float32_to_float8_e4m3fn(((const float*)&v)[i]);
+      p[i] = mag_float32_to_float8_e4m3fn(((const float *)&v)[i]);
     }
   #endif
 }
