@@ -83,7 +83,7 @@ mag_op_thread_scaling_info mag_cpu_get_op_thread_scaling_info(mag_opcode_t op) {
     [MAG_OP_TANH_DV] = {0.5, 25000},
     [MAG_OP_RELU] = {0.5, 25000},
     [MAG_OP_RELU_DV] = {0.5, 25000},
-    [MAG_OP_GELU] = {0.5, 25000},
+    [MAG_OP_GELU] = {0.9, 10000},
     [MAG_OP_GELU_APPROX] = {0.5, 25000},
     [MAG_OP_GELU_DV] = {0.5, 25000},
     [MAG_OP_TRIL] = {0.5, 10000},

@@ -10,11 +10,13 @@ args.add_argument('--N', type=int, default=1 << 24)
 args.add_argument('--device', type=str, default='cpu', choices=['cpu', 'cuda'])
 args.add_argument('--warmup', type=int, default=20)
 args.add_argument('--iters', type=int, default=500)
-args.add_argument('--dtype', type=str, default='bfloat16', choices=['float16', 'bfloat16', 'float32'])
+args.add_argument('--dtype', type=str, default='bfloat16', choices=['float8_e4m3fn', 'float16', 'bfloat16', 'float32'])
 args.add_argument('--noncontig', action='store_true', help='Use non-contiguous tensors')
 args = args.parse_args()
 
-x = Tensor.uniform(args.N, dtype=getattr(dtype, args.dtype), device=args.device)
+_dtype = getattr(dtype, args.dtype)
+
+x = Tensor.uniform(args.N, dtype=_dtype, device=args.device)
 if args.noncontig:
     x = x.T
 op = getattr(x, args.op)
@@ -30,8 +32,7 @@ for _ in range(args.iters):
     times.append(t1 - t0)
     del y
 
-bytes_per_el = {'float16': 2, 'bfloat16': 2, 'float32': 4}[args.dtype]
-gb = (args.N * bytes_per_el * 2) / 1e9
+gb = (args.N * _dtype.size * 2) / 1e9
 throughput = [gb / t for t in times]
 
 print(
