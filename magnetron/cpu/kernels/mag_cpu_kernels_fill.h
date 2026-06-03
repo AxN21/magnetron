@@ -11,50 +11,6 @@
 
 #define mag_cvt_nop(x) (x)
 
-#define mag_gen_vrand_uniform_fp(T, CVT) \
-  static void MAG_AINLINE mag_vrand_uniform_##T(mag_philox4x32_stream_t *prng, int64_t numel, T *restrict o, float min, float max) {  \
-    int64_t i=0;  \
-    for (; i+3 < numel; i += 4) { \
-      mag_philox4x32_float32x4_t r = mag_philox4x32_next_float32x4_uniform(prng, min, max); \
-      for (int k=0; k < 4; ++k) \
-        o[i+k] = CVT(r.v[k]); \
-    }  \
-    if (i < numel) {  \
-      mag_philox4x32_float32x4_t r = mag_philox4x32_next_float32x4_uniform(prng, min, max); \
-      for (int64_t t=0; i < numel; ++i, ++t)  \
-        o[i] = CVT(r.v[t]);  \
-    }  \
-  }
-
-mag_gen_vrand_uniform_fp(float, mag_cvt_nop)
-mag_gen_vrand_uniform_fp(mag_float16_t, mag_float32_to_float16)
-mag_gen_vrand_uniform_fp(mag_bfloat16_t, mag_float32_to_bfloat16)
-mag_gen_vrand_uniform_fp(mag_float8_e4m3fn_t, mag_float32_to_float8_e4m3fn)
-
-#undef mag_gen_vrand_uniform_fp
-
-#define mag_gen_vrand_normal_fp(T, CVT) \
-  static void MAG_AINLINE mag_vrand_normal_##T(mag_philox4x32_stream_t *prng, int64_t numel, T *restrict o, float mean, float std) {  \
-    int64_t i=0;  \
-    for (; i+3 < numel; i += 4) { \
-      mag_philox4x32_float32x4_t r = mag_philox4x32_next_float32x4_normal(prng, mean, std); \
-      for (int k=0; k < 4; ++k) \
-        o[i+k] = CVT(r.v[k]); \
-    }  \
-    if (i < numel) {  \
-      mag_philox4x32_float32x4_t r = mag_philox4x32_next_float32x4_normal(prng, mean, std); \
-      for (int64_t t=0; i < numel; ++i, ++t)  \
-        o[i] = CVT(r.v[t]);  \
-    }  \
-  }
-
-mag_gen_vrand_normal_fp(float, mag_cvt_nop)
-mag_gen_vrand_normal_fp(mag_float16_t, mag_float32_to_float16)
-mag_gen_vrand_normal_fp(mag_bfloat16_t, mag_float32_to_bfloat16)
-mag_gen_vrand_normal_fp(mag_float8_e4m3fn_t, mag_float32_to_float8_e4m3fn)
-
-#undef mag_gen_vrand_normal_fp
-
 /* Generate N bernoulli distributed booleans. */
 static void MAG_AINLINE mag_vrand_bernoulli_bool(mag_philox4x32_stream_t *prng, int64_t numel, uint8_t *restrict o, float p) {
   if (mag_unlikely(p <= 0.0f)) {
@@ -263,10 +219,6 @@ mag_gen_stub_masked_fill(int64_t, int64, mag_G, int64, mag_cvt_nop)
     return MAG_STATUS_OK; \
   }
 
-mag_gen_stub_fill_rand(uniform, float, float, float64, float32)
-mag_gen_stub_fill_rand(uniform, mag_float16_t, float, float64, float16)
-mag_gen_stub_fill_rand(uniform, mag_bfloat16_t, float, float64, bfloat16)
-mag_gen_stub_fill_rand(uniform, mag_float8_e4m3fn_t, float, float64, float8_e4m3fn)
 mag_gen_stub_fill_rand(uniform, uint8_t, uint64_t, uint64, uint8)
 mag_gen_stub_fill_rand(uniform, int8_t, int64_t, int64, int8)
 mag_gen_stub_fill_rand(uniform, uint16_t, uint64_t, uint64, uint16)
@@ -276,12 +228,69 @@ mag_gen_stub_fill_rand(uniform, int32_t, int64_t, int64, int32)
 mag_gen_stub_fill_rand(uniform, uint64_t, uint64_t, uint64, uint64)
 mag_gen_stub_fill_rand(uniform, int64_t, int64_t, int64, int64)
 
-mag_gen_stub_fill_rand(normal, float, float, float64, float32)
-mag_gen_stub_fill_rand(normal, mag_float16_t, float, float64, float16)
-mag_gen_stub_fill_rand(normal, mag_bfloat16_t, float, float64, bfloat16)
-mag_gen_stub_fill_rand(normal, mag_float8_e4m3fn_t, float, float64, float8_e4m3fn)
-
 #undef mag_gen_stub_fill_rand
+
+#define mag_gen_stub_fill_rand_fp_simd_only(D, T, TS, UT, TF)                    \
+  static MAG_HOTPROC mag_status_t mag_fill_rand_##D##_##TF(                     \
+    mag_error_t *err, const mag_kernel_payload_t *payload                        \
+  ) {                                                                           \
+    (void)err;                                                                  \
+    mag_tensor_t *r = mag_cmd_out(0);                                            \
+    TS min = (TS)mag_op_attr_unwrap_##UT(mag_cmd_attr(0));                       \
+    TS max = (TS)mag_op_attr_unwrap_##UT(mag_cmd_attr(1));                       \
+    T *br = (T *)mag_tensor_data_ptr_mut(r);                                     \
+    mag_philox4x32_stream_t *prng = payload->prng;                               \
+                                                                                \
+    int64_t total = r->numel;                                                    \
+    int64_t tc = payload->thread_num;                                            \
+    int64_t ti = payload->thread_idx;                                            \
+                                                                                \
+    int64_t block = 4 * MAG_VF32_LANES;                                          \
+    int64_t blocks = (total + block - 1) / block;                                \
+    int64_t chunk_blocks = (blocks + tc - 1) / tc;                               \
+                                                                                \
+    int64_t ba = ti * chunk_blocks;                                              \
+    int64_t bb = mag_xmin(ba + chunk_blocks, blocks);                            \
+    int64_t ra = ba * block;                                                     \
+    int64_t rb = mag_xmin(bb * block, total);                                    \
+                                                                                \
+    if (mag_unlikely(rb <= ra)) return MAG_STATUS_OK;                            \
+                                                                                \
+    uint64_t seed = ((uint64_t)prng->key.v[1] << 32) | prng->key.v[0];            \
+    uint64_t subseq = ((uint64_t)prng->ctr.v[3] << 32) | prng->ctr.v[2];          \
+    uint64_t counter = (uint64_t)ba * MAG_VF32_LANES;                            \
+                                                                                \
+    if (mag_tensor_is_contiguous(r)) {                                           \
+      mag_vrand_##D##_##T##_simd(seed, subseq, counter, rb - ra, br + ra, min, max); \
+      return MAG_STATUS_OK;                                                      \
+    }                                                                           \
+                                                                                \
+    mag_coords_iter_t cr;                                                        \
+    mag_coords_iter_init(&cr, &r->coords);                                       \
+    for (int64_t i = ra; i < rb; ++i) {                                          \
+      int64_t ri = mag_coords_iter_to_offset(&cr, i);                            \
+      mag_bnd_chk(br + ri, br, mag_tensor_numbytes(r));                          \
+      uint64_t elem_block = (uint64_t)i / (uint64_t)(4 * MAG_VF32_LANES);         \
+      uint64_t elem_off = (uint64_t)i % (uint64_t)(4 * MAG_VF32_LANES);           \
+      T tmp[4 * MAG_VF32_LANES];                                                 \
+      mag_vrand_##D##_##T##_simd(                                                \
+        seed, subseq, elem_block * MAG_VF32_LANES,                               \
+        4 * MAG_VF32_LANES, tmp, min, max                                        \
+      );                                                                         \
+      br[ri] = tmp[elem_off];                                                    \
+    }                                                                           \
+    return MAG_STATUS_OK;                                                        \
+  }
+
+mag_gen_stub_fill_rand_fp_simd_only(uniform, float, float, float64, float32)
+mag_gen_stub_fill_rand_fp_simd_only(uniform, mag_float16_t, float, float64, float16)
+mag_gen_stub_fill_rand_fp_simd_only(uniform, mag_bfloat16_t, float, float64, bfloat16)
+mag_gen_stub_fill_rand_fp_simd_only(uniform, mag_float8_e4m3fn_t, float, float64, float8_e4m3fn)
+
+mag_gen_stub_fill_rand_fp_simd_only(normal, float, float, float64, float32)
+mag_gen_stub_fill_rand_fp_simd_only(normal, mag_float16_t, float, float64, float16)
+mag_gen_stub_fill_rand_fp_simd_only(normal, mag_bfloat16_t, float, float64, bfloat16)
+mag_gen_stub_fill_rand_fp_simd_only(normal, mag_float8_e4m3fn_t, float, float64, float8_e4m3fn)
 
 #define mag_gen_stub_arange(T, TF, CVT) \
   static MAG_HOTPROC mag_status_t mag_arange_##TF(mag_error_t *err, const mag_kernel_payload_t *payload) { \

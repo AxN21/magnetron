@@ -89,17 +89,14 @@ static MAG_AINLINE mag_vf32_t mag_vf32_log(mag_vf32_t x) {
   x = mag_vf32_max(x, mag_vf32_reinterpret_from_vi32(mag_vi32_splat((int32_t)0x00800000u)));
   mag_vi32_t ix = mag_vi32_reinterpret_from_vf32(x);
   mag_vi32_t e = mag_vi32_sub(mag_vi32_srli(ix, 23), mag_vi32_splat(0x7f));
-  x = mag_vf32_reinterpret_from_vi32(
-    mag_vi32_or(
-      mag_vi32_and(ix, mag_vi32_splat((int32_t)~0x7f800000u)),
-      mag_vi32_splat((int32_t)0x3f000000u)
-    )
-  );
+  x = mag_vf32_reinterpret_from_vi32(mag_vi32_or(mag_vi32_and(ix, mag_vi32_splat((int32_t)~0x7f800000u)),mag_vi32_splat((int32_t)0x3f000000u)));
+  mag_vf32_t ef = mag_vf32_add(mag_vi32_to_f32(e), mag_vf32_splat(1.0f));
   mag_vmask32_t m = mag_vf32_cmplt(x, mag_vf32_splat(0.707106781186547524f));
   mag_vf32_t mf = mag_vf32_reinterpret_from_vi32(mag_vi32_from_vmask32(m));
-  e = mag_vi32_sub(e, mag_vi32_from_vmask32(m));
-  x = mag_vf32_sub(mag_vf32_add(x, mag_vf32_and(x, mf)), mag_vf32_splat(1.0f));
-  mag_vf32_t ef = mag_vi32_to_f32(e);
+  mag_vf32_t tmp = mag_vf32_and(x, mf);
+  x = mag_vf32_sub(x, mag_vf32_splat(1.0f));
+  ef = mag_vf32_sub(ef, mag_vf32_and(mag_vf32_splat(1.0f), mf));
+  x = mag_vf32_add(x, tmp);
   mag_vf32_t z = mag_vf32_mul(x, x);
   mag_vf32_t y = mag_vf32_splat(7.0376836292e-2f);
   y = mag_vf32_fmadd(y, x, mag_vf32_splat(-1.1514610310e-1f));
@@ -174,4 +171,3 @@ static MAG_AINLINE mag_vf32_t mag_vf32_cos(mag_vf32_t x) {
   mag_vf32_sincos(x, &s, &c);
   return c;
 }
-

@@ -824,6 +824,23 @@ static MAG_AINLINE mag_vf32_t mag_vf32_and(mag_vf32_t x, mag_vf32_t y) {
     return r;
   #endif
 }
+static MAG_AINLINE mag_vf32_t mag_vf32_sqrt(mag_vf32_t x) {
+  #if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+    return vsqrtq_f32(x);
+  #elif defined(__AVX512F__)
+    return _mm512_sqrt_ps(x);
+  #elif defined(__AVX2__)
+    return _mm256_sqrt_ps(x);
+  #elif defined(__SSE2__)
+    return _mm_sqrt_ps(x);
+  #elif defined(__loongarch_asx)
+    return __lasx_xvfsqrt_s(x);
+  #elif defined(__loongarch_sx)
+    return __lsx_vfsqrt_s(x);
+  #else
+    return sqrtf(x);
+  #endif
+}
 static MAG_AINLINE mag_vf32_t mag_vf32_or(mag_vf32_t x, mag_vf32_t y) {
   #if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
     return vreinterpretq_f32_u32(vorrq_u32(vreinterpretq_u32_f32(x), vreinterpretq_u32_f32(y)));
@@ -954,24 +971,6 @@ static MAG_AINLINE mag_vf32_t mag_vf32_loadu_f16(const mag_float16_t *p) {
   #endif
 }
 
-static MAG_AINLINE mag_vf32_t mag_vf32_sqrt(mag_vf32_t x) {
-  #if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
-    return vsqrtq_f32(x);
-  #elif defined(__AVX512F__)
-    return _mm512_sqrt_ps(x);
-  #elif defined(__AVX2__)
-    return _mm256_sqrt_ps(x);
-  #elif defined(__SSE2__)
-    return _mm_sqrt_ps(x);
-  #elif defined(__loongarch_asx)
-    return __lasx_xvfsqrt_s(x);
-  #elif defined(__loongarch_sx)
-    return __lsx_vfsqrt_s(x);
-  #else
-    return sqrtf(x);
-#endif
-}
-
 static MAG_AINLINE void mag_vf32_storeu_f16(mag_float16_t *p, mag_vf32_t v) {
   #if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
     vst1_f16((__fp16 *)p, vcvt_f16_f32(v));
@@ -1007,6 +1006,12 @@ static MAG_AINLINE void mag_vf32_storeu_f16(mag_float16_t *p, mag_vf32_t v) {
   #else
     *p = mag_float32_to_float16(v);
   #endif
+}
+
+static MAG_AINLINE void mag_vf32_storeu_masked_f16(mag_float16_t *p, mag_vf32_t v, int n) {
+  mag_float16_t tmp[MAG_VF32_LANES];
+  mag_vf32_storeu_f16(tmp, v);
+  for (int i=0; i < n; ++i) p[i] = tmp[i];
 }
 
 static MAG_AINLINE mag_vf32_t mag_vf32_loadu_bf16(const mag_bfloat16_t *p) {
@@ -1104,6 +1109,12 @@ static MAG_AINLINE void mag_vf32_storeu_bf16(mag_bfloat16_t *p, mag_vf32_t v) {
   #else
     *p = mag_float32_to_bfloat16(v);
   #endif
+}
+
+static MAG_AINLINE void mag_vf32_storeu_masked_bf16(mag_bfloat16_t *p, mag_vf32_t v, int n) {
+  mag_bfloat16_t tmp[MAG_VF32_LANES];
+  mag_vf32_storeu_bf16(tmp, v);
+  for (int i=0; i < n; ++i) p[i] = tmp[i];
 }
 
 static MAG_AINLINE mag_vf32_t mag_vf32_loadu_float8_e4m3fn(const mag_float8_e4m3fn_t *p) {
@@ -1210,6 +1221,12 @@ static MAG_AINLINE void mag_vf32_storeu_float8_e4m3fn(mag_float8_e4m3fn_t *p, ma
       p[i] = mag_float32_to_float8_e4m3fn(((const float *)&v)[i]);
     }
   #endif
+}
+
+static MAG_AINLINE void mag_vf32_storeu_masked_float8_e4m3fn(mag_float8_e4m3fn_t *p, mag_vf32_t v, int n) {
+  mag_float8_e4m3fn_t tmp[MAG_VF32_LANES];
+  mag_vf32_storeu_float8_e4m3fn(tmp, v);
+  for (int i=0; i < n; ++i) p[i] = tmp[i];
 }
 
 /* i32 vector */
@@ -1588,6 +1605,41 @@ static MAG_AINLINE mag_vi32_t mag_vi32_mul(mag_vi32_t x, mag_vi32_t y) {
     return x*y;
   #endif
 }
+static MAG_AINLINE mag_vi32_t mag_vi32_mulhi_u32(mag_vi32_t x, mag_vi32_t y) {
+  #if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+    uint64x2_t p0 = vmull_u32(vget_low_u32(vreinterpretq_u32_s32(x)), vget_low_u32(vreinterpretq_u32_s32(y)));
+    uint64x2_t p1 = vmull_u32(vget_high_u32(vreinterpretq_u32_s32(x)), vget_high_u32(vreinterpretq_u32_s32(y)));
+    uint32x2_t h0 = vmovn_u64(vshrq_n_u64(p0, 32));
+    uint32x2_t h1 = vmovn_u64(vshrq_n_u64(p1, 32));
+    return vreinterpretq_s32_u32(vcombine_u32(h0, h1));
+  #elif defined(__AVX512F__)
+    __m512i even = _mm512_mul_epu32(x, y);
+    __m512i xo = _mm512_srli_epi64(x, 32);
+    __m512i yo = _mm512_srli_epi64(y, 32);
+    __m512i odd = _mm512_mul_epu32(xo, yo);
+    __m512i even_hi = _mm512_srli_epi64(even, 32);
+    __m512i odd_hi  = _mm512_slli_epi64(_mm512_srli_epi64(odd, 32), 32);
+    return _mm512_or_si512(even_hi, odd_hi);
+  #elif defined(__AVX2__)
+    __m256i even = _mm256_mul_epu32(x, y);
+    __m256i xo = _mm256_srli_epi64(x, 32);
+    __m256i yo = _mm256_srli_epi64(y, 32);
+    __m256i odd = _mm256_mul_epu32(xo, yo);
+    __m256i even_hi = _mm256_srli_epi64(even, 32);
+    __m256i odd_hi  = _mm256_slli_epi64(_mm256_srli_epi64(odd, 32), 32);
+    return _mm256_or_si256(even_hi, odd_hi);
+  #elif defined(__SSE2__)
+    __m128i even = _mm_mul_epu32(x, y);
+    __m128i xo = _mm_srli_epi64(x, 32);
+    __m128i yo = _mm_srli_epi64(y, 32);
+    __m128i odd = _mm_mul_epu32(xo, yo);
+    __m128i even_hi = _mm_srli_epi64(even, 32);
+    __m128i odd_hi  = _mm_slli_epi64(_mm_srli_epi64(odd, 32), 32);
+    return _mm_or_si128(even_hi, odd_hi);
+  #else
+    return (uint32_t)(((uint64_t)(uint32_t)x*(uint64_t)(uint32_t)y)>>32);
+  #endif
+}
 static MAG_AINLINE mag_vi32_t mag_vi32_and(mag_vi32_t x, mag_vi32_t y) {
   #if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
     return vreinterpretq_s32_u32(vandq_u32(vreinterpretq_u32_s32(x), vreinterpretq_u32_s32(y)));
@@ -1884,6 +1936,24 @@ static MAG_AINLINE mag_vi32_t mag_vi32_from_vmask32(mag_vmask32_t m) {
     return m;
   #else
     return (mag_vi32_t)m;
+  #endif
+}
+
+static MAG_AINLINE mag_vi32_t mag_vi32_iota(void) {
+  #if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+    return (mag_vi32_t){0,1,2,3};
+  #elif defined(__AVX512F__)
+    return _mm512_setr_epi32(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15);
+  #elif defined(__AVX2__)
+    return _mm256_setr_epi32(0,1,2,3,4,5,6,7);
+  #elif defined(__SSE2__)
+    return _mm_setr_epi32(0,1,2,3);
+  #elif defined(__loongarch_asx)
+  #error "TODO"
+  #elif defined(__loongarch_sx)
+  #error "TODO"
+  #else
+    return 0;
   #endif
 }
 

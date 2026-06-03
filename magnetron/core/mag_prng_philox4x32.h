@@ -19,6 +19,10 @@ extern "C" {
 #endif
 
 #define MAG_PHILOX_ROUNDS 10
+#define MAG_PHILOX_M0 0xd2511f53u
+#define MAG_PHILOX_M1 0xcd9e8d57u
+#define MAG_PHILOX_W0 0x9e3779B9u
+#define MAG_PHILOX_W1 0xbb67ae85u
 
 typedef struct mag_philox4x32_ctr_t { uint32_t v[4]; } mag_philox4x32_ctr_t;
 typedef struct mag_philox4x32_key_t { uint32_t v[2]; } mag_philox4x32_key_t;
@@ -46,14 +50,14 @@ static MAG_CUDA_DEVICE MAG_AINLINE mag_philox4x32_uint32x4_t mag_philox4x32_next
   mag_philox4x32_ctr_t ctr = stream->ctr;
   for (int i=0; i < MAG_PHILOX_ROUNDS; ++i) {
     uint32_t hi0, hi1;
-    uint32_t lo0 = mag_mulhilo32(0xd2511f53u, ctr.v[0], &hi0);
-    uint32_t lo1 = mag_mulhilo32(0xcd9e8d57u, ctr.v[2], &hi1);
+    uint32_t lo0 = mag_mulhilo32(MAG_PHILOX_M0, ctr.v[0], &hi0);
+    uint32_t lo1 = mag_mulhilo32(MAG_PHILOX_M1, ctr.v[2], &hi1);
     ctr.v[0] = hi1^ctr.v[1]^key.v[0];
     ctr.v[1] = lo1;
     ctr.v[2] = hi0^ctr.v[3]^key.v[1];
     ctr.v[3] = lo0;
-    key.v[0] += 0x9e3779B9u;
-    key.v[1] += 0xbb67ae85u;
+    key.v[0] += MAG_PHILOX_W0;
+    key.v[1] += MAG_PHILOX_W1;
   }
   /* Treat control as 128-bit integral and increment */
   #if !defined(__CUDA_ARCH__) && defined(__SIZEOF_INT128__) && defined(MAG_LITTLE_ENDIAN)

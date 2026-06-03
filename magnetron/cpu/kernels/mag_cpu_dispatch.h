@@ -111,6 +111,7 @@ static MAG_AINLINE float mag_float16_to_float32(mag_float16_t x) {
 
 #include "mag_cpu_simd.h"
 #include "mag_cpu_simd_functions.h"
+#include "mag_cpu_simd_philox4x32.h"
 
 /* Order matters, do not touch */
 #include "mag_cpu_crc32c.h"
