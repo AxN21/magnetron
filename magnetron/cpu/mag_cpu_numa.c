@@ -12,7 +12,8 @@
 #include "mag_cpu_numa.h"
 
 #ifdef __gnu_linux__
-#include <syscall.h>
+#include <unistd.h>
+#include <sys/syscall.h>
 #include <pthread.h>
 #include <sys/stat.h>
 
@@ -56,7 +57,7 @@ bool mag_numa_init(mag_numa_node_controller_t *nodes, mag_numa_strategy_t strate
     ++nodes->num_cpus;
   }
   unsigned curr_cpu;
-  #if __GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ > 33) || defined(__COSMOPOLITAN__)
+  #if defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ > 33))
     ret = getcpu(&curr_cpu, &nodes->curr_node);
   #else
     #if !defined(SYS_getcpu) && defined(SYS_get_cpu)
